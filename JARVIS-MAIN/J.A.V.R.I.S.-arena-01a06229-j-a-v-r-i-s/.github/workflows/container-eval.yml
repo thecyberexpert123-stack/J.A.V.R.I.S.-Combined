@@ -1,0 +1,44 @@
+name: Container eval
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+    paths:
+      - "src/**"
+      - "evals/**"
+      - ".github/workflows/container-eval.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distro: "debian:12", name: "debian-12" }
+          - { distro: "ubuntu:24.04", name: "ubuntu-24.04" }
+          - { distro: "fedora:latest", name: "fedora" }
+          - { distro: "archlinux:latest", name: "arch" }
+          - { distro: "alpine:latest", name: "alpine" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run M1 execution-eval in ${{ matrix.distro }}
+        run: |
+          docker run --rm \
+            -v "$PWD":/repo -w /repo \
+            -e JARVIS_STATE_DIR=/tmp/jarvis-eval-state \
+            -e GITHUB_ACTIONS=true -e CI=true \
+            ${{ matrix.distro }} \
+            sh evals/harness/run_in_container.sh "${{ matrix.name }}"
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ matrix.name }}
+          path: evals/results/*.json

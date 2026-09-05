@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "javris-gui"
+version = "0.1.0"
+description = "A native Linux heads-up display in the J.A.R.V.I.S. design language, driven by real system telemetry."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+    "PySide6-Essentials>=6.6,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+javris = "javris.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The QML module tree must ship intact: every qmldir and .qmltypes as well as
+# the .qml files, or the modules cannot be resolved at runtime.
+javris = [
+    "ui/*.qml",
+    "ui/qmldir",
+    "ui/components/*.qml",
+    "ui/components/qmldir",
+    "ui/modes/*.qml",
+    "ui/modes/qmldir",
+    "core/qmldir",
+    "core/*.qmltypes",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF", "ANN", "S"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "ANN", "SLF001"]
+# Qt signals and QML-invoked slots must be camelCase to match the Qt/QML
+# naming convention; renaming them would break the QML interface.
+"src/javris/controller.py" = ["N815"]
+# 'nm' and the C compiler are resolved via shutil.which before use; a hard
+# path would break on any non-standard toolchain layout.
+"tools/sandbox_gl_stubs.py" = ["S607"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+# PySide6 ships partial stubs; do not fail the gate on the toolkit's own annotations.
+[[tool.mypy.overrides]]
+module = ["PySide6.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+addopts = "-q --strict-markers"
+
+[tool.coverage.run]
+source = ["src/javris"]

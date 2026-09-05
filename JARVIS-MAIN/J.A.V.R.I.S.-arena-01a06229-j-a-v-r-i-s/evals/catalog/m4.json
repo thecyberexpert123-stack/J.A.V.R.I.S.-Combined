@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "name": "m4-grounding-catalog",
+  "description": "M4 grounding eval: every answered question must cite >=1 source and report honest on-machine status; refusals for anything outside the KB. Gate: 0 unverifiable claims.",
+  "cases": [
+    {
+      "id": "ostype-verified",
+      "question": "what is the kernel type",
+      "expect": {
+        "fact": "kernel.ostype",
+        "machine": "verified"
+      }
+    },
+    {
+      "id": "meminfo-verified",
+      "question": "where does memory info come from",
+      "expect": {
+        "fact": "procfs.meminfo",
+        "machine": "verified"
+      }
+    },
+    {
+      "id": "osrelease-verified",
+      "question": "where is the distro identity stored",
+      "expect": {
+        "fact": "os-release.identity",
+        "machine": "verified"
+      }
+    },
+    {
+      "id": "apt-verified",
+      "question": "what is the debian package manager",
+      "expect": {
+        "fact": "distro.pkg.apt",
+        "machine": "verified"
+      }
+    },
+    {
+      "id": "dnf-honest-contradicted",
+      "question": "what is the fedora package manager",
+      "expect": {
+        "fact": "distro.pkg.dnf",
+        "machine": "contradicted",
+        "status": "answered-unverified-here",
+        "note": "no dnf on this host: fact stays cited, uncertainty explicit"
+      }
+    },
+    {
+      "id": "arch-pitfall-doc-sourced",
+      "question": "arch pacman partial upgrade warning",
+      "expect": {
+        "fact": "pitfall.arch.partial-upgrade",
+        "machine": "unverifiable-here"
+      }
+    },
+    {
+      "id": "systemctl-exit-verified",
+      "question": "systemctl is-active exit codes",
+      "expect": {
+        "fact": "systemctl.is-active.exit",
+        "machine": "verified"
+      }
+    },
+    {
+      "id": "apt-vs-apt-get-doc-sourced",
+      "question": "apt vs apt-get for scripts",
+      "expect": {
+        "fact": "pitfall.apt-vs-apt-get",
+        "machine": "unverifiable-here"
+      }
+    },
+    {
+      "id": "refuse-out-of-kb",
+      "question": "who is the president",
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "id": "refuse-nonsense",
+      "question": "write me a poem about dragons",
+      "expect": {
+        "refused": true
+      }
+    }
+  ]
+}

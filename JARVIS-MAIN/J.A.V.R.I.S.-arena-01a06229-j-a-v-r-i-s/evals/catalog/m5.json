@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "name": "m5-gui-catalog",
+  "description": "M5 GUI eval: 15 end-to-end tasks through the real jarvis CLI against a real X stack (Xvfb + i3 + xterm + xdotool + wmctrl + scrot). Gate: >=98% within the catalog => 15/15. Consent-refusal and honesty checks are tasks, not conveniences.",
+  "consent_mode": "--yes (T2 auto-approval) for all mutating tasks EXCEPT task 15, which must be refused WITHOUT it",
+  "tasks": [
+    {
+      "id": "01-detect-x11",
+      "description": "detection reports the x11 session honestly",
+      "run": [
+        "gui",
+        "status"
+      ],
+      "expect": {
+        "json_path": "session.session_type",
+        "equals": "x11"
+      }
+    },
+    {
+      "id": "02-backend-i3",
+      "description": "i3 IPC selected as the window backend",
+      "run": [
+        "gui",
+        "status"
+      ],
+      "expect": {
+        "json_path": "capabilities.windows.backend",
+        "equals": "i3-msg"
+      }
+    },
+    {
+      "id": "03-input-xdotool",
+      "description": "xdotool selected for synthetic input on X11 (key always uses it; type_text prefers AT-SPI when importable)",
+      "run": [
+        "gui",
+        "status"
+      ],
+      "expect": {
+        "json_path": "capabilities.key.backend",
+        "equals": "xdotool"
+      }
+    },
+    {
+      "id": "04-windows-empty-ok",
+      "description": "window listing works before any window exists",
+      "run": [
+        "gui",
+        "windows"
+      ],
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "id": "05-launch-xterm-a",
+      "description": "launch a detached xterm; its window appears",
+      "run": [
+        "gui",
+        "open",
+        "--",
+        "xterm",
+        "-title",
+        "jarvis-a",
+        "-e",
+        "sleep",
+        "90"
+      ],
+      "expect": {
+        "exit": 0,
+        "poll_window_contains": "jarvis-a",
+        "poll_seconds": 20
+      }
+    },
+    {
+      "id": "06-launch-reader",
+      "description": "launch a reader xterm that writes what it reads to a file",
+      "run": [
+        "gui",
+        "open",
+        "--",
+        "xterm",
+        "-title",
+        "jarvis-reader",
+        "-e",
+        "sh",
+        "-c",
+        "read -r __line && printf %s \"$__line\" > /tmp/jarvis-typed.txt"
+      ],
+      "expect": {
+        "exit": 0,
+        "poll_window_contains": "jarvis-reader",
+        "poll_seconds": 20
+      }
+    },
+    {
+      "id": "07-focus-reader",
+      "description": "focus the reader window by title substring",
+      "run": [
+        "gui",
+        "focus",
+        "jarvis-reader"
+      ],
+      "expect": {
+        "exit": 0,
+        "json_path": "status",
+        "equals": "done"
+      }
+    },
+    {
+      "id": "08-type-into-reader",
+      "description": "inject text into the focused reader (target disclosed)",
+      "run": [
+        "gui",
+        "type",
+        "jarvis-was-here"
+      ],
+      "expect": {
+        "exit": 0,
+        "json_path": "target",
+        "contains": "jarvis-reader"
+      }
+    },
+    {
+      "id": "09-key-return-commits",
+      "description": "send Return; the reader's shell writes the typed line",
+      "run": [
+        "gui",
+        "key",
+        "Return"
+      ],
+      "expect": {
+        "exit": 0,
+        "file_contains": "/tmp/jarvis-typed.txt",
+        "value": "jarvis-was-here",
+        "poll_seconds": 10
+      }
+    },
+    {
+      "id": "10-type-rejects-control-chars",
+      "description": "policy: newline in typed text is refused before injection",
+      "run": [
+        "gui",
+        "type",
+        "bad\nnewline"
+      ],
+      "expect": {
+        "exit": 2
+      }
+    },
+    {
+      "id": "11-screenshot-png",
+      "description": "scrot captures a real non-empty PNG",
+      "run": [
+        "gui",
+        "screenshot",
+        "/tmp/jarvis-shot.png"
+      ],
+      "expect": {
+        "exit": 0,
+        "file_starts": "/tmp/jarvis-shot.png",
+        "magic": "\u0089PNG"
+      }
+    },
+    {
+      "id": "12-vision-honest-abstain",
+      "description": "describe without a vision model refuses honestly (no fabrication)",
+      "run": [
+        "gui",
+        "describe",
+        "/tmp/jarvis-shot.png"
+      ],
+      "expect": {
+        "exit": 2,
+        "stderr_contains": "Ollama"
+      }
+    },
+    {
+      "id": "13-atspi-honest-state",
+      "description": "AT-SPI reported honestly: available or absent-with-reason, never a crash",
+      "run": [
+        "gui",
+        "status"
+      ],
+      "expect": {
+        "json_path": "atspi.detail",
+        "nonempty": true
+      }
+    },
+    {
+      "id": "14-close-window",
+      "description": "graceful WM close removes the window",
+      "run": [
+        "gui",
+        "close",
+        "jarvis-a"
+      ],
+      "expect": {
+        "exit": 0,
+        "poll_window_absent": "jarvis-a",
+        "poll_seconds": 10
+      }
+    },
+    {
+      "id": "15-consent-enforced",
+      "description": "T2 launch WITHOUT --yes in a non-tty is refused (safety invariant)",
+      "run": [
+        "gui",
+        "open",
+        "--",
+        "xterm",
+        "-title",
+        "jarvis-never"
+      ],
+      "no_yes": true,
+      "expect": {
+        "exit": 2,
+        "stderr_contains": "refused"
+      }
+    }
+  ],
+  "headless_subset": [
+    {
+      "id": "h1-status-headless-honest",
+      "run": [
+        "gui",
+        "status"
+      ],
+      "expect": {
+        "json_path": "session.session_type",
+        "equals": "headless"
+      }
+    },
+    {
+      "id": "h2-type-refused-headless",
+      "run": [
+        "gui",
+        "type",
+        "hi"
+      ],
+      "expect": {
+        "exit": 2,
+        "stderr_contains": "unavailable"
+      }
+    },
+    {
+      "id": "h3-windows-refused-headless",
+      "run": [
+        "gui",
+        "windows"
+      ],
+      "expect": {
+        "exit": 2
+      }
+    },
+    {
+      "id": "h4-wizard-runs-headless",
+      "run": [
+        "gui",
+        "wizard"
+      ],
+      "expect": {
+        "exit": 0
+      }
+    }
+  ]
+}

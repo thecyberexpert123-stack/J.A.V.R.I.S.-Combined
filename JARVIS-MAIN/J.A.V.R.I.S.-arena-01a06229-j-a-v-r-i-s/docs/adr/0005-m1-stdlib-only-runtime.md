@@ -1,0 +1,6 @@
+# ADR-0005: M1 runtime stays stdlib-only (typer/rich/pydantic deferred to M2)
+
+- **Status:** Accepted (2026-09-02)
+- **Context:** PLAN §5 anticipated runtime dependencies (Typer, Pydantic) entering at M1/M2 with individual justification (guideline 16). M1's CLI surface is five commands (`status`, `do`, `undo`, `playbooks`, `tasks`) with simple flags; M1's data structures are internal and statically typed.
+- **Decision:** M1 ships with **zero runtime dependencies** (stdlib: `argparse`, `sqlite3`, `subprocess`, `json`, `re`, `pathlib`, `dataclasses`, `uuid`, `signal`, `fnmatch`). Typer/Rich enter at M2 when the interactive TUI chat justifies richer terminal UX; Pydantic enters at M2 when *untrusted LLM output* needs schema-validated parsing — exactly the threat model it mitigates. Using them earlier would add supply-chain surface without corresponding benefit (guidelines 14, 15, 16).
+- **Consequences:** Container evaluation (acceptance gate M1) needs no `pip install` inside distro containers — only a Python 3.10+ interpreter — making the eval faster, deterministic, and network-light. Argument parsing may feel less polished than a Typer CLI; acceptable at this stage and replaceable behind `cli/app.py` without touching business logic (CLI owns no business logic per PLAN §4.2).

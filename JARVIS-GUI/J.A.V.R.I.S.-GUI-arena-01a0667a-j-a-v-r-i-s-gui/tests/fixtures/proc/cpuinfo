@@ -1,0 +1,16 @@
+processor	: 0
+vendor_id	: GenuineIntel
+cpu family	: 6
+model		: 85
+model name	: Intel(R) Xeon(R) Processor @ 2.60GHz
+cpu MHz		: 2600.000
+cache size	: 16384 KB
+
+processor	: 1
+vendor_id	: GenuineIntel
+cpu family	: 6
+model		: 85
+model name	: Intel(R) Xeon(R) Processor @ 2.60GHz
+cpu MHz		: 2600.000
+cache size	: 16384 KB
+

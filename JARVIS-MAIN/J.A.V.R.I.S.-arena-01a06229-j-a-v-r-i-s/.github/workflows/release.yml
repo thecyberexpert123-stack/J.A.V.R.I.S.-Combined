@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: build artifacts (+ draft release on tag)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist + wheel + deb
+        run: |
+          python -m pip install build
+          python -m build
+          packaging/deb/build-deb.sh dist/jarvis_agent-*.whl dist
+
+      - name: Wheel smoke (clean venv, no index)
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --quiet --no-index dist/jarvis_agent-*.whl
+          /tmp/clean/bin/jarvis --version
+
+      - name: Create draft release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --draft --title "JARVIS $GITHUB_REF_NAME" \
+            --notes "Artifacts for $GITHUB_REF_NAME. Wheel is primary (pipx install jarvis-agent); deb/rpm/PKGBUILD install the same code natively. LICENSE decision pending (owner-reserved)." \
+            dist/*
+        continue-on-error: false
+
+      - name: Upload artifacts (dispatch runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-release-artifacts
+          path: dist/*

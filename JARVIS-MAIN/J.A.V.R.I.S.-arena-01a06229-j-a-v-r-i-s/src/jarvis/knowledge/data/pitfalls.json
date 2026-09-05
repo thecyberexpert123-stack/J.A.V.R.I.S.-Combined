@@ -1,0 +1,58 @@
+{
+  "kb_version": 1,
+  "facts": [
+    {
+      "id": "pitfall.arch.partial-upgrade",
+      "topic": "pitfalls",
+      "claim": "On Arch, partial upgrades are unsupported: 'pacman -Sy <pkg>' (refresh index without upgrading everything) can break the system. JARVIS therefore never runs bare '-Sy'; its refresh playbook warns and its upgrade uses '-Syu'.",
+      "patterns": ["partial upgrade", "pacman -sy", "arch upgrade warning"],
+      "sources": [
+        {
+          "kind": "docs",
+          "ref": "Arch Wiki: System maintenance — partial upgrades",
+          "url": "https://wiki.archlinux.org/title/System_maintenance"
+        }
+      ]
+    },
+    {
+      "id": "pitfall.debian.noninteractive",
+      "topic": "pitfalls",
+      "claim": "Non-interactive apt runs must set DEBIAN_FRONTEND=noninteractive (and ideally DEBIAN_PRIORITY=critical) or debconf may block on interactive prompts; JARVIS sets both env vars for every apt mutation.",
+      "patterns": ["debian frontend", "apt noninteractive", "apt hangs prompt"],
+      "sources": [
+        {
+          "kind": "docs",
+          "ref": "Ubuntu documentation: AptGet Howto",
+          "url": "https://help.ubuntu.com/community/AptGet/Howto"
+        }
+      ]
+    },
+    {
+      "id": "pitfall.apt-vs-apt-get",
+      "topic": "pitfalls",
+      "claim": "apt(8) is the friendly interactive front-end whose output/behavior may change between releases; apt-get(8) is the stable interface intended for scripts — which is why JARVIS drives apt-get, not apt.",
+      "patterns": ["apt vs apt-get", "which apt for scripts", "apt-get stable"],
+      "sources": [
+        {
+          "kind": "man-page",
+          "ref": "apt(8) — 'Script Usage' section",
+          "url": "https://manpages.debian.org/bookworm/apt/apt.8.en.html"
+        }
+      ]
+    },
+    {
+      "id": "systemctl.is-active.exit",
+      "topic": "pitfalls",
+      "claim": "'systemctl is-active <unit>' exits 0 when the unit is active and 3 (not 1) when none are active — scripts must treat any non-zero as not-active. JARVIS's service playbooks use exactly these semantics.",
+      "patterns": ["systemctl is-active", "service active exit code", "check service status script"],
+      "sources": [
+        {
+          "kind": "man-page",
+          "ref": "systemctl(1)",
+          "url": "https://www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+        }
+      ],
+      "verify": { "kind": "binary_present", "name": "systemctl" }
+    }
+  ]
+}

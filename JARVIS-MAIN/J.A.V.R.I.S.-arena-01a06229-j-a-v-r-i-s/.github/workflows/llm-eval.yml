@@ -1,0 +1,41 @@
+name: LLM eval (real model)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1" # weekly: real-model verification against drift
+
+jobs:
+  live-llm:
+    name: real Ollama model — injection corpus + live suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ollama + tiny model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do curl -s http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
+          ollama pull qwen2.5:0.5b
+          ollama list
+
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+
+      - name: Live-LLM injection corpus (planner OR kernel must refuse all)
+        env:
+          RUN_LIVE_LLM: "1"
+          JARVIS_LLM_MODEL: "qwen2.5:0.5b"
+        run: pytest tests/test_fault_injection_live.py -m live_llm -v
+
+      - name: Live suite (real Ollama smoke)
+        env:
+          RUN_LIVE: "1"
+          JARVIS_LOCAL_MODEL: "qwen2.5:0.5b"
+        run: pytest -m live -v

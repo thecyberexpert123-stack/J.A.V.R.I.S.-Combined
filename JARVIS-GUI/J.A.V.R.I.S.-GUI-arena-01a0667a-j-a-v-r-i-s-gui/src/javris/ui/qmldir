@@ -1,0 +1,4 @@
+module javris.ui
+singleton Theme 1.0 Theme.qml
+HudSurface 1.0 HudSurface.qml
+Main 1.0 Main.qml

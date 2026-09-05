@@ -1,0 +1,51 @@
+{
+  "kb_version": 1,
+  "facts": [
+    {
+      "id": "kernel.ostype",
+      "topic": "kernel",
+      "claim": "The running kernel reports its type as 'Linux' via /proc/sys/kernel/ostype (also shown by 'uname -o').",
+      "patterns": ["ostype", "kernel type", "what kernel is this", "kernel name"],
+      "sources": [
+        {
+          "kind": "kernel-doc",
+          "repo": "torvalds/linux",
+          "ref": "Documentation/admin-guide/sysctl/kernel.rst",
+          "url": "https://github.com/torvalds/linux/blob/master/Documentation/admin-guide/sysctl/kernel.rst"
+        },
+        { "kind": "proc", "ref": "/proc/sys/kernel/ostype" }
+      ],
+      "verify": { "kind": "file_equals", "path": "/proc/sys/kernel/ostype", "value": "Linux" }
+    },
+    {
+      "id": "procfs.meminfo",
+      "topic": "kernel",
+      "claim": "/proc/meminfo is the procfs file reporting memory usage (total, free, available, buffers/cached); tools like free read it from there.",
+      "patterns": ["meminfo", "memory info", "how much memory", "proc meminfo"],
+      "sources": [
+        {
+          "kind": "kernel-doc",
+          "repo": "torvalds/linux",
+          "ref": "Documentation/filesystems/proc.rst",
+          "url": "https://github.com/torvalds/linux/blob/master/Documentation/filesystems/proc.rst"
+        },
+        { "kind": "proc", "ref": "/proc/meminfo" }
+      ],
+      "verify": { "kind": "file_exists", "path": "/proc/meminfo" }
+    },
+    {
+      "id": "kernel.release.uname",
+      "topic": "kernel",
+      "claim": "'uname -r' prints the kernel release string (e.g. '6.1.0-18-amd64'); it comes from the running kernel via uname(2).",
+      "patterns": ["kernel release", "uname -r", "kernel version"],
+      "sources": [
+        {
+          "kind": "man-page",
+          "ref": "uname(1)",
+          "url": "https://man7.org/linux/man-pages/man1/uname.1.html"
+        }
+      ],
+      "verify": { "kind": "command_ok", "argv": ["uname", "-r"] }
+    }
+  ]
+}

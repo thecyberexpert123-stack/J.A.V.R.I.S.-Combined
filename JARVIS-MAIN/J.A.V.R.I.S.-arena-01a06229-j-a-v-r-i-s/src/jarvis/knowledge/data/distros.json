@@ -1,0 +1,80 @@
+{
+  "kb_version": 1,
+  "facts": [
+    {
+      "id": "os-release.identity",
+      "topic": "distros",
+      "claim": "A distro's identity (ID, VERSION_ID, PRETTY_NAME) is declared in /etc/os-release, a standardized key=value file (freedesktop spec: man 5 os-release). JARVIS reads it during SENSE.",
+      "patterns": ["which distro", "distro identity", "os-release", "detect distribution"],
+      "sources": [
+        {
+          "kind": "spec",
+          "ref": "os-release(5) / freedesktop.org",
+          "url": "https://www.freedesktop.org/software/systemd/man/latest/os-release.html"
+        },
+        { "kind": "proc", "ref": "/etc/os-release" }
+      ],
+      "verify": { "kind": "os_release_field", "field": "ID" }
+    },
+    {
+      "id": "distro.pkg.apt",
+      "topic": "distros",
+      "claim": "Debian and Ubuntu family distributions manage packages with apt/dpkg ('apt-get' is the stable scripting interface).",
+      "patterns": ["debian package manager", "ubuntu package manager", "what is apt"],
+      "sources": [
+        {
+          "kind": "man-page",
+          "ref": "apt(8)",
+          "url": "https://manpages.debian.org/bookworm/apt/apt.8.en.html"
+        },
+        { "kind": "binary", "ref": "apt-get" }
+      ],
+      "verify": { "kind": "binary_present", "name": "apt-get" }
+    },
+    {
+      "id": "distro.pkg.dnf",
+      "topic": "distros",
+      "claim": "Fedora, RHEL, CentOS Stream, Rocky and AlmaLinux manage packages with dnf (backed by rpm).",
+      "patterns": ["fedora package manager", "rhel package manager", "what is dnf"],
+      "sources": [
+        {
+          "kind": "docs",
+          "ref": "DNF documentation",
+          "url": "https://docs.fedoraproject.org/en-US/quick-docs/dnf/"
+        },
+        { "kind": "binary", "ref": "dnf" }
+      ],
+      "verify": { "kind": "binary_present", "name": "dnf" }
+    },
+    {
+      "id": "distro.pkg.pacman",
+      "topic": "distros",
+      "claim": "Arch Linux and derivatives manage packages with pacman (pacman -S installs, -R removes, -Syu full upgrade).",
+      "patterns": ["arch package manager", "what is pacman"],
+      "sources": [
+        {
+          "kind": "docs",
+          "ref": "Arch Wiki: pacman",
+          "url": "https://wiki.archlinux.org/title/pacman"
+        },
+        { "kind": "binary", "ref": "pacman" }
+      ],
+      "verify": { "kind": "binary_present", "name": "pacman" }
+    },
+    {
+      "id": "distro.pkg.apk",
+      "topic": "distros",
+      "claim": "Alpine Linux manages packages with apk ('apk add' installs, 'apk del' removes); its tools are musl/busybox-based rather than glibc/systemd by default.",
+      "patterns": ["alpine package manager", "what is apk"],
+      "sources": [
+        {
+          "kind": "docs",
+          "ref": "Alpine Wiki: Package Management",
+          "url": "https://wiki.alpinelinux.org/wiki/Package_Management"
+        },
+        { "kind": "binary", "ref": "apk" }
+      ],
+      "verify": { "kind": "binary_present", "name": "apk" }
+    }
+  ]
+}

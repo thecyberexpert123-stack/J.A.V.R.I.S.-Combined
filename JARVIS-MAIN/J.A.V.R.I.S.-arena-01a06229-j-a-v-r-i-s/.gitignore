@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Environments
+.venv/
+venv/
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# JARVIS runtime artifacts (journal DBs live in user state at runtime,
+# never in the repo; ignore defensively in case of local runs from checkout)
+*.sqlite3
+*.db
+
+# Generated eval result files (curated summaries are committed instead)
+evals/results/*.json

@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "name": "m2-planner-catalog",
+  "description": "M2 planner eval: routing, schema-validity of LLM proposals, and refusal honesty. The 'LLM' is a local stub server with scripted responses, so the run is deterministic and needs no network or model weights.",
+  "cases": [
+    {
+      "id": "engine-fast-path-no-llm",
+      "request": "install htop",
+      "stub_responses": [],
+      "expect": {
+        "status": "dry_run",
+        "playbook": "pkg.install",
+        "llm_requests": 0,
+        "note": "deterministic match must never consult the planner"
+      }
+    },
+    {
+      "id": "valid-plan-schema-ok",
+      "request": "set up quick monitoring",
+      "stub_responses": [
+        {
+          "message": {
+            "content": "{\"explanation\": \"monitoring setup\", \"steps\": [\"install htop\", \"system info\"]}"
+          }
+        }
+      ],
+      "expect": {
+        "status": "dry_run",
+        "playbook": "plan",
+        "llm_requests": 1,
+        "step_count": 4,
+        "undo_status": "available",
+        "note": "valid proposal -> fully materialized deterministic plan"
+      }
+    },
+    {
+      "id": "multi-part-with-service",
+      "request": "prepare a web server box",
+      "stub_responses": [
+        {
+          "message": {
+            "content": "{\"explanation\": \"web box\", \"steps\": [\"install curl\", \"enable ssh\"]}"
+          }
+        }
+      ],
+      "expect": {
+        "status": "dry_run",
+        "playbook": "plan",
+        "llm_requests": 1,
+        "undo_status": "available",
+        "note": "T2 part raises composite tier; undo composes install+disable"
+      }
+    },
+    {
+      "id": "malformed-json-refused",
+      "request": "clean up my system",
+      "stub_responses": [
+        {
+          "message": {
+            "content": "Sure! I would just clean things up for you."
+          }
+        }
+      ],
+      "expect": {
+        "status": "refused",
+        "error_contains": "not valid JSON",
+        "note": "prose instead of JSON -> refusal, never guessing"
+      }
+    },
+    {
+      "id": "unknown-intent-refused",
+      "request": "do the thing",
+      "stub_responses": [
+        {
+          "message": {
+            "content": "{\"steps\": [\"flurb the frobnicator\"]}"
+          }
+        }
+      ],
+      "expect": {
+        "status": "refused",
+        "error_contains": "does not map",
+        "note": "out-of-vocabulary step -> refusal"
+      }
+    },
+    {
+      "id": "injection-step-refused",
+      "request": "get htop onto this box",
+      "stub_responses": [
+        {
+          "message": {
+            "content": "{\"steps\": [\"install htop; rm -rf /\"]}"
+          }
+        }
+      ],
+      "expect": {
+        "status": "refused",
+        "note": "injection-shaped proposal dies at the matcher",
+        "llm_requests": 1
+      }
+    },
+    {
+      "id": "empty-steps-refused",
+      "request": "solve world hunger",
+      "stub_responses": [
+        {
+          "message": {
+            "content": "{\"explanation\": \"cannot\", \"steps\": []}"
+          }
+        }
+      ],
+      "expect": {
+        "status": "refused",
+        "error_contains": "no steps",
+        "note": "honest refusal when the request is out of scope"
+      }
+    },
+    {
+      "id": "backend-error-failed-honestly",
+      "request": "set up monitoring",
+      "stub_status": 500,
+      "stub_responses": [
+        {}
+      ],
+      "expect": {
+        "status": "failed",
+        "error_contains": "planning backend failed",
+        "note": "provider outage -> honest failure, not a fabricated plan"
+      }
+    },
+    {
+      "id": "no-backend-refused",
+      "request": "set up monitoring",
+      "no_local": true,
+      "stub_responses": [],
+      "expect": {
+        "status": "refused",
+        "error_contains": "no planning backend",
+        "note": "nothing reachable -> honest refusal with setup hint"
+      }
+    }
+  ]
+}

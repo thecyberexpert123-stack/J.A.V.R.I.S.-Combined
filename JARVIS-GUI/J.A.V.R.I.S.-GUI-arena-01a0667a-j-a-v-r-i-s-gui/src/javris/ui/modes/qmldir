@@ -1,0 +1,4 @@
+module javris.ui.modes
+DiagnosticsMode 1.0 DiagnosticsMode.qml
+MonitorMode 1.0 MonitorMode.qml
+AssistantMode 1.0 AssistantMode.qml

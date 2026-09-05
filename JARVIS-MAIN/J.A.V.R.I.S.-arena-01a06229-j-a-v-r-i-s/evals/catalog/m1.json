@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "name": "m1-seed-catalog",
+  "description": "M1 kernel execution-eval: 10 seed playbooks per distro container. Success = post-condition verification passed. Service playbooks are expected to fail-with-honesty in containers (no systemd as PID 1); that refusal IS the tested behavior.",
+  "environment": {
+    "requires_root": true,
+    "notes": "Containers run as root (docker default). Network access required for repository metadata."
+  },
+  "tasks": [
+    {
+      "id": "sysinfo-1",
+      "type": "do",
+      "intent": ["system info"],
+      "expect": { "status": "succeeded", "playbook": "sys.info" }
+    },
+    {
+      "id": "refresh-1",
+      "type": "do",
+      "intent": ["update"],
+      "expect": { "status": "succeeded", "playbook": "pkg.cache.refresh" }
+    },
+    {
+      "id": "install-1",
+      "type": "do",
+      "intent": ["install htop"],
+      "expect": { "status": "succeeded", "playbook": "pkg.install", "verify_ok": true }
+    },
+    {
+      "id": "install-2-idempotent",
+      "type": "do",
+      "intent": ["install htop"],
+      "expect": { "status": "succeeded", "playbook": "pkg.install", "verify_ok": true }
+    },
+    {
+      "id": "search-1",
+      "type": "do",
+      "intent": ["search htop"],
+      "expect": { "status": "succeeded", "playbook": "pkg.search" }
+    },
+    {
+      "id": "info-1",
+      "type": "do",
+      "intent": ["info htop"],
+      "expect": { "status": "succeeded", "playbook": "pkg.info" }
+    },
+    {
+      "id": "undo-install-1",
+      "type": "undo",
+      "of": "install-1",
+      "expect": { "status": "succeeded" }
+    },
+    {
+      "id": "install-3-reinstall",
+      "type": "do",
+      "intent": ["install htop"],
+      "expect": { "status": "succeeded", "playbook": "pkg.install", "verify_ok": true }
+    },
+    {
+      "id": "remove-1",
+      "type": "do",
+      "intent": ["remove htop"],
+      "expect": { "status": "succeeded", "playbook": "pkg.remove", "verify_ok": true }
+    },
+    {
+      "id": "upgrade-1",
+      "type": "do",
+      "intent": ["upgrade system"],
+      "expect": { "status": "succeeded", "playbook": "pkg.upgrade" }
+    },
+    {
+      "id": "svc-status-honest-refusal",
+      "type": "do",
+      "intent": ["status of ssh.service"],
+      "expect": {
+        "status": "failed",
+        "playbook": "svc.status",
+        "error_contains": "systemd"
+      },
+      "notes": "Containers do not boot systemd; the agent must refuse honestly, never fake success."
+    },
+    {
+      "id": "refuse-protected",
+      "type": "do",
+      "intent": ["remove libc6"],
+      "expect": { "status": "refused", "error_contains": "boot-critical" }
+    },
+    {
+      "id": "refuse-unmatched",
+      "type": "do",
+      "intent": ["make me a sandwich"],
+      "expect": { "status": "refused", "error_contains": "will not guess" }
+    },
+    {
+      "id": "refuse-invalid-name",
+      "type": "do",
+      "intent": ["install -oProxy=http://evil"],
+      "expect": { "status": "refused", "error_contains": "invalid" }
+    }
+  ]
+}
