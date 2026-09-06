@@ -389,3 +389,34 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   `journal chain  : TAMPERED — task:… differs from its last attested write`, exit 1, `--json`
   `clean: false`; `jarvis tasks`/`status` output unchanged. **Not verified:** CI on the changed
   tree (`api.github.com` unreachable). No commit or push (none instructed).
+
+## 2026-09-06 · C3 — ADR-0029 drafted, paused, then accepted the same day (design commit; code follows)
+
+- **The hardening "recipe" would have broken the product.** Research II flagged
+  `NoNewPrivileges=` as incompatible with `sudo -n` and left the rest as ASSUMED. Reading
+  systemd.exec(5) for the *user* manager turned the assumption into a wall: every seccomp-backed
+  directive (`SystemCallFilter=`, `RestrictAddressFamilies=`, `LockPersonality=`, …) implies
+  `NoNewPrivileges=yes` there, and every mount-namespace directive (`ProtectSystem=`,
+  `ProtectHome=`, `PrivateTmp=`, …) needs an unprivileged user namespace — where setuid is void.
+  Both were confirmed empirically in one line each (`setpriv --no-new-privs sudo -n true`,
+  `unshare -U sudo -n true`) with sudo's own error messages, and `UMask=0077` fell to a third
+  probe (sudo unions umasks). So the honest answer for the doorway is "supervision, not
+  confinement, score stays 9.6", and the ADR says so instead of shipping a green score that
+  silently turns every `pkg.install` into a sudo failure.
+- **Split by what each unit is *allowed to do*, not by what the analyser rewards.** The brief
+  unit never runs a playbook, so it can take the full profile (measured 9.6 → 2.0); the doorway
+  and charters can escalate, so they cannot. That distinction is the ADR's spine.
+- **Opt-in until one real run exists.** The confined brief profile passes the offline analyser,
+  but executing under seccomp + userns cannot be tested in this sandbox (no user service
+  manager). A timer that dies on every run would be a regression, so D3 proposes `--harden`
+  with the promotion criterion and the exact `journalctl` commands written down.
+- **Kept `Restart=on-failure`, did not switch to `on-watchdog`.** The man page lists watchdog
+  expiry among what `on-failure` already covers; `on-watchdog` would have *dropped* crash
+  restarts. Small, but it is the kind of change a recipe copies without reading.
+- **Verified:** offline `systemd-analyze security` scores for every variant quoted (system and
+  `--user` views), the stdlib notify round-trip over an abstract `AF_UNIX` datagram socket, the
+  `serve_forever` → `service_actions()` hook in CPython 3.11's `socketserver`. **Not verified:**
+  anything under a live user manager (watchdog restart, `Type=notify` readiness, the confined
+  brief actually running). No files outside `docs/`, `CHANGELOG.md`, this file and `TASKS.md`
+  were touched for C3.
+

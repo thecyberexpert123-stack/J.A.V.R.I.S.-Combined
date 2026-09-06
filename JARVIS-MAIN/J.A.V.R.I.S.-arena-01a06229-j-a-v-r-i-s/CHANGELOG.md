@@ -31,6 +31,18 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
+### Accepted — ADR-0029 doorway watchdog + per-unit hardening (2026-09-06; ADR only in this entry, no code change yet)
+- `docs/adr/0029-doorway-watchdog-and-unit-hardening.md`: D1 stdlib `sd_notify` client for the
+  resident doorway (`READY=1`, `WATCHDOG=1` at half `WATCHDOG_USEC` from the accept loop,
+  `STATUS=`, `STOPPING=1`; inert without `NOTIFY_SOCKET`), D2 `Type=notify` + `WatchdogSec=30`
+  on `jarvis-serve.service` with **no** hardening directives — verified here that in a user
+  manager every seccomp-backed directive implies `NoNewPrivileges=yes` and every mount-namespace
+  directive needs a user namespace, and both break `sudo -n` (T1/T2), so the doorway's exposure
+  score honestly stays 9.6 — D3 an opt-in confined profile for the never-escalating brief unit
+  (`systemd-analyze security --offline`: 9.6 → 2.0), D4 charters unchanged (C3b/C3c recorded as
+  owner options). Owner decisions the same day: D1+D2 **accepted**, D3 **opt-in `--harden`**,
+  C3b/C3c kept as options; implementation follows in the next commit.
+
 ## [1.21.0] - 2026-09-06 — the journal evidence chain (ADR-0028) + `pass^k` eval reliability (ADR-0027) + combined-tree audit
 
 ### Fixed — combined-repository audit (2026-09-06, docs and file modes only; no code change)

@@ -62,15 +62,17 @@ Origin: research §3.4 (SAL evidence chain), §3.5 (ACS); precedent `context/sto
 - **Limits:** tamper-*evidence*, not prevention (ADR-0028 D6); edits made *before* the upgrade are unknowable and reported as `legacy`. Coverage check: `mark_undone` delegates to `finish_task`, so undo status changes are chained too (verified by reading, 2026-09-06).
 - [ ] **C11b (owner option):** anchor `chain_head` off-machine or in a separate owner-written pin (e.g. `jarvis doctor --pin-journal`) so a consistent rewrite of the whole chain is also detectable. Not started: it makes `doctor` a writer or adds an external dependency — owner call.
 
-### B-C3 · Doorway survival: `sd_notify` watchdog + `STATUS=` + per-unit hardening — *OWNER-Q* (S–M)
-Origin: research §4.2 (`sd_notify(3)`), §3.7 (systemd hardening); baseline measured 2026-09-06: current doorway unit scores **9.6 UNSAFE** in `systemd-analyze security --offline`.
-- [ ] Inspect `cli/serve.py` (`run_server`, `unit_content`), `brief/install.py`, `safety/charter.py` unit builders; how `sudo -n` steps run from the doorway.
-- [ ] ADR draft with **two separable decisions**: (D1) stdlib `NOTIFY_SOCKET` client (`READY=1`, `WATCHDOG=1` at `WATCHDOG_USEC/2`, `STATUS=` lines, `STOPPING=1`), no-op when unset; unit gains `Type=notify`, `WatchdogSec=`, `Restart=on-watchdog`; (D2) hardening directive set per unit with the carve-outs the state dir and `sudo -n` need — **each directive justified, `NoNewPrivileges=` explicitly excluded for units that may run T1/T2 steps**, target exposure score recorded.
-- [ ] Owner accepts → implement D1 (client + unit text + tests with a fake `AF_UNIX` datagram socket); implement D2 (unit text only) with `systemd-analyze security --offline` run in tests when the binary exists (skips honestly otherwise).
-- [ ] Failure modes in ADR: watchdog must **never** be wired to integrity drift (charter: failure = pause); a hung request must not starve the ping (ping from the serving thread's idle loop, not from request handlers).
-- Acceptance: doorway unit exposure score improves from 9.6 to the ADR's target; `jarvis serve` behaviour unchanged when not under systemd.
-- Verification plan: unit tests; offline `systemd-analyze security` before/after; **live watchdog restart must be verified on the owner's machine** (`systemctl --user`), with the exact commands written in the ADR.
-- Sandbox limits: no user systemd instance / no bus here → restart-on-watchdog cannot be observed in the sandbox.
+### B-C3 · Doorway survival: `sd_notify` watchdog + `STATUS=` + per-unit hardening — *OWNER-Q* (S–M) — `[~]` **ADR-0029 accepted 2026-09-06 (D1+D2, D3 opt-in) — implementing**
+Origin: research §4.2 (`sd_notify(3)`), §3.7 (systemd hardening); baseline measured 2026-09-06: doorway / brief / charter units all score **9.6 UNSAFE** in `systemd-analyze security --offline` (9.8 in `--user` view).
+- [x] Inspected `cli/serve.py` (`run_server`, `unit_content`, install/status), `brief/install.py`, `safety/charter.py::unit_documents`, `execution/runner.py` (`sudo -n`, `env = dict(os.environ)` → children inherit env), brief engine (no playbooks, no network; `notify-send` only), playbook `requires_root` by tier (T0: 0 of 38; T1: 3 of 10; T2: 6 of 10), GUI `bridge/resident.py` (health poll only).
+- [x] **Finding that reshaped the design:** in a *user* service manager every seccomp-backed directive implies `NoNewPrivileges=yes` and every mount-namespace directive needs a user namespace; both break `sudo -n` (`setpriv --no-new-privs sudo -n true` → "no new privileges flag is set"; `unshare -U sudo -n true` → "must be owned by uid 0 and have the setuid bit set"); `UMask=0077` is unioned by sudo. ⇒ units that may run T1/T2 cannot take score-moving directives.
+- [x] ADR-0029 written with separable decisions: D1 stdlib notify client (inert without `NOTIFY_SOCKET`; strips the env vars from children; pings from `service_actions()` on the accept loop; never `WATCHDOG=trigger`), D2 doorway `Type=notify`+`WatchdogSec=30`, `Restart=on-failure` retained (covers watchdog), **no hardening** (score stays 9.6, reason stated), D3 brief unit opt-in `--harden` profile (measured **9.6 → 2.0**, `--user` 9.8 → 2.2; `--threshold=25` passes), D4 charters unchanged, D5 test plan, D6 non-goals; failure-modes table; owner-machine verification commands.
+- [x] **Owner decisions (ADR "Consequences"):** (1) D1+D2 **accepted** (§D7); (2) brief profile **opt-in `--harden`** (§D8); (3) C3b/C3c kept as recorded options.
+- [ ] After acceptance: implement D1 (`src/jarvis/system/sdnotify.py`) + D2 + D3 + tests (`tests/test_sdnotify.py`, `test_serve.py`, `test_brief.py`, offline `systemd-analyze` check when present) + docs; bump shared with ADR-0028 (1.21.0).
+- Acceptance (revised by the ADR): doorway supervised (restart within ~32 s of a hang, `Status:` line) with behaviour unchanged outside systemd; brief unit exposure ≤ 2.5 with `--harden`; doorway score honestly unchanged.
+- **Verified (2026-09-06):** offline analyser scores for baseline and every variant; stdlib notify round-trip over an abstract `AF_UNIX` datagram socket; `socketserver.BaseServer.serve_forever` calls `service_actions()` each poll (CPython 3.11). **Not verified:** anything under a live user manager (watchdog restart, readiness, confined brief run) — sandbox has no user systemd instance/bus.
+- [ ] **C3b (owner option):** confined profile for `tier_ceiling = 0` charters once the brief profile is proven on real hardware (T0 tools need wider syscall/address-family allowances).
+- [ ] **C3c (owner option, architectural):** a second doorway mode `jarvis serve --max-tier 0` that refuses T1/T2 and can therefore take the full confinement profile.
 
 ### B-C1 · Owner-authored, narrowing-only argument policy — *OWNER-Q; security-sensitive* (M)
 Origin: research §3.3 (Progent monotonic confinement, CaMeL), §3.4 (AgentSpec: human-owned rules).
@@ -157,6 +159,8 @@ Origin: research §3.7; sandbox check 2026-09-06: Landlock ABI 2 present on kern
 | D4 | Per-item gating | **Pre-approve low-risk, pause on security:** C6, C11, C7-plan, C10 may go ADR → code without a pause; C1, C2, C3, C4, C5, C8, C9 pause at the ADR for acceptance. | 2026-09-06 |
 | D5 | Commit/push (asked again with C6 + C11 ready) | Owner: *"Do the first option, BUT JUST DON'T MERGE."* = **commit + push now, one commit per item, to `arena/01a0717a-j-a-v-r-i-s-combined` only; never merge.** A4 unblocked. | 2026-09-06 |
 | D6 | Kernel version | **Bump 1.20.0 → 1.21.0 now** (C11 is the first runtime change); PKGBUILD/spec synced; `pip install -e .` re-run so `test_package` sees the dist version. | 2026-09-06 |
+| D7 | ADR-0029 D1+D2 (doorway watchdog, no hardening) | **Accepted — implement now.** Live watchdog restart still to be observed on the owner's machine (commands in the ADR). | 2026-09-06 |
+| D8 | ADR-0029 D3 (confined brief unit) | **Opt-in `--harden`** (default unit unchanged; promotion to default-on after one verified real run). C3b/C3c stay recorded as owner options. | 2026-09-06 |
 
 ## E. Definition of done — per item (guideline 22 self-review)
 

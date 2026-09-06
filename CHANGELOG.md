@@ -46,6 +46,12 @@ repository is not versioned independently; the sub-projects are.
   migration of existing journals, 18 new tests; kernel suite 883 passed + 2
   skipped, M3 fault gate 0 escapes. GUI untouched. Details in the kernel
   `CHANGELOG.md`; `TASKS.md` B-C11 carries the verification block.
+- **Sequence item C3 — ADR-0029 drafted and accepted** (2026-09-06; docs only): doorway
+  `sd_notify` watchdog + per-unit hardening. Key finding recorded for the owner:
+  user-manager sandboxing directives imply `NoNewPrivileges`/user namespaces and
+  break `sudo -n`, so only the never-escalating brief unit can be confined
+  (measured 9.6 → 2.0); the doorway gets supervision, not confinement. Owner
+  accepted D1+D2 and D3 as opt-in (`TASKS.md` §D7/§D8); implementation follows.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the
