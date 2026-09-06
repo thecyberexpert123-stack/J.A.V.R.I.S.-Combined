@@ -31,7 +31,20 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Proposed — ADR-0031 environment signals as briefing inputs (2026-09-06; ADR only, no code)
+- `docs/adr/0031-environment-signals-briefing-inputs.md`: six facts for the propose-only
+  briefing — battery discharging ≤ N % (sysfs, same filter as the HUD's `read_battery()`), no
+  network link (sysfs), metered connection (NetworkManager `Metered` 1/3), sleep or shutdown
+  imminent and session locked (login1 `PreparingForSleep` / `PreparingForShutdown` /
+  `LockedHint`) as **holds** that drop the desktop knock, slept-since-last-run
+  (`/sys/power/suspend_stats/success`) as ledger context. Access: `--signals off|sysfs|bus`
+  (default `off` = today byte-for-byte); `sysfs` stays zero-subprocess; `bus` = one fixed-argv
+  `busctl --system --auto-start=no --timeout=2 call … org.freedesktop.DBus.Properties Get`
+  per property, never activating a service. No listener, no inotify, no `Inhibit()`, no path to
+  execution (ADR-0017 D3, ADR-0021 D1 intact). Interface names verified at source (logind,
+  UPower, NetworkManager, kernel sysfs ABI, `busctl(1)`); UPower verified but not used.
+  **Paused for the owner:** Q-A signal set + 20 % threshold, Q-B default mode, Q-C no listener,
+  Q-D hold semantics. Live sensing is not verifiable in the sandbox (no bus, battery or suspend).
 
 ## [1.22.0] - 2026-09-06 — owner argument policy (ADR-0030) + supervised doorway / `brief --harden` (ADR-0029)
 

@@ -499,3 +499,33 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
 - **Verified:** gate clean; 941 passed; 40 new tests; 6 mutations caught; M3 0 escapes ×3
   configurations; CLI round-trip by running the verbs. **Not verified:** nothing outstanding.
 
+## 2026-09-06 · C4 design — reading the sources changed the architecture, not just the citations
+
+- **"Fetch and cite before the ADR" paid for itself in the first hour.** The research doc had
+  *assumed* the access path was fixed-argv `busctl`/`gdbus` for everything. The kernel's own sysfs
+  ABI documents (`sysfs-class-power`, `sysfs-class-net`, `sysfs-power`) show that battery, link and
+  suspend-count are plain files with documented value sets — four of the six research rows need no
+  bus at all, and the briefing's zero-subprocess promise survives for them. The bus is left for the
+  three facts only logind/NetworkManager know (metered, sleep-imminent, locked). Verify the cheap
+  path exists before designing around the expensive one.
+- **The HUD had already solved half the problem.** `proc_reader.py::read_battery()` filters
+  `type == Battery`, clamps `capacity`, and maps `status` — the ADR mirrors that filter exactly so a
+  HUD cell and a briefing line can never disagree. When two repos read the same kernel fact, one
+  filter, written down once, is the seam rule.
+- **`busctl get-property` was the obvious verb and the wrong one.** `--auto-start=` and
+  `--timeout=` are documented for `call`, with defaults of *yes* and *25 s*. A sensing probe that
+  could bus-activate UPower or hang a oneshot for 25 s is not "sensing"; the ADR uses
+  `call … org.freedesktop.DBus.Properties Get` with `--auto-start=no --timeout=2` and says why.
+  Read the option table, not just the command list.
+- **Two logind facts are poll-only by design.** `PreparingForSleep`/`PreparingForShutdown` "do not
+  send out PropertyChanged signals" — so a listener would not even help for them, which made the
+  poll-at-briefing-time decision easier to defend than the research had framed it.
+- **Honesty about what the timer can see.** systemd catches up a calendar timer *after* resume,
+  when `PreparingForSleep` is already false again, so the flagship "suppress on sleep" signal will
+  rarely fire in practice; the ADR says so and turns "resume" into a counted ledger fact instead of
+  a trigger.
+- **Verified:** every interface/property/value in the ADR fetched at source today; sandbox
+  facts (no bus → `Failed to connect to bus`, rc 1, 6 ms; `busctl` 252 has the three options;
+  sysfs paths present). **Not verified:** any live sensing; five items are marked ASSUMED in the
+  ADR with the exact commands the owner can run.
+
