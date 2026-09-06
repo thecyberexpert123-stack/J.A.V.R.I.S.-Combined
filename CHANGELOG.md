@@ -18,6 +18,26 @@ repository is not versioned independently; the sub-projects are.
 - Root `README.md` (how the halves connect, how to run and verify both),
   this `CHANGELOG.md`, `AGENT-EXPERIENCE.md` and a root `.gitignore`. The
   initial import (`e3a8d8d`) contained only the two project trees.
+- **Deep research II** (2026-09-06, owner-directed, research only): the kernel
+  gains `docs/RESEARCH-agent-construction-and-future-tech-2026.md` — how an
+  agent is actually built and which 2025–26 techniques would make JARVIS more
+  capable, environment-aware and self-sustaining, mapped to both halves of this
+  tree (kernel modules and ADRs; the HUD's MCP `protocolVersion` pin appears in
+  the MCP 2026-07-28 section). 56 sources with per-claim provenance; eleven
+  candidates and ten owner decisions; no code changed in either sub-project.
+- **`TASKS.md`** (root): the owner-requested checklist for following the
+  research through — per candidate: origin section, sub-tasks, acceptance,
+  verification plan, and what the sandbox can and cannot verify (measured
+  2026-09-06: no bus, no user systemd instance, no Ollama; Landlock ABI 2
+  present; `systemd-analyze security --offline` available and the current
+  doorway unit scores 9.6 UNSAFE). Decision log for the owner's answers.
+- **Sequence item C6 — `pass^k` in the kernel's eval drivers** (2026-09-06,
+  kernel ADR-0027; harness + tests + docs only, no runtime code, no version
+  bump): `--runs K` on `m2_eval.py`/`m4_grounding.py` with τ-bench's
+  `pass^1…pass^K` curve, per-run state isolation (which also closed a
+  local-rerun breaker artefact found during inspection), 9 new tests; kernel
+  suite 865 passed + 2 skipped. Details in the kernel `CHANGELOG.md`;
+  `TASKS.md` B-C6 carries the verified / not-verified / limits block.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the

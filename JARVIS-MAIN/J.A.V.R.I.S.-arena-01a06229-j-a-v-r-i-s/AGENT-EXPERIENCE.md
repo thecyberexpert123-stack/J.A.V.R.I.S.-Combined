@@ -275,3 +275,76 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
 - **What I did not do:** no kernel code changed in this round, no tag, no merge. The GUI's
   findings did not surface a kernel defect to fix; they surfaced the fact that the kernel's
   refusal vocabulary is richer than its tier field, which a client must respect.
+
+---
+
+## 2026-09-06 · Deep research II — how an agent is actually made, and what "surviving" should mean here
+
+- **The brief was open-ended ("more capable, environmental, surviving") and the temptation was to
+  answer it with a shopping list.** What kept it honest was reading the kernel *after* each search:
+  three things I expected to recommend turned out to be already shipped (constrained decoding via
+  Ollama `format` + `PLAN_JSON_SCHEMA`, ADR-0014 D4; a hash-chained store — but only for the
+  context ledger, not the task journal; a computed no-LLM digest, ADR-0024). Each became a
+  "confirmed" or a "half-present" line instead of a proposal, which is the difference between
+  research and marketing.
+- **"Surviving" needed a definition before it could be researched.** Every source that uses the
+  word means one of four bounded things — the process staying up under a watchdog, state surviving
+  a crash so a task can resume *or be undone*, recovery under explicit budgets, and the agent
+  proving its own code is unmodified. None means self-preservation, and I wrote that down as an
+  explicit limit (§4.5) so the word cannot drift later.
+- **Provenance discipline cost more than the searching.** Roughly half the sources were only ever
+  seen as search excerpts. Rather than launder them into confident prose, every claim carries
+  `[fetched]` or `[snippet]`, and §11 lists what was *not* verified (UPower/NetworkManager interface
+  names, MCP stateless rules for stdio, Landlock struct layouts, `ProtectHome`/`sudo -n`
+  interaction). A future session should treat the `[snippet]` items as leads, not facts.
+- **One residual I chose to name rather than hide:** `net.dns` is technically an outbound channel
+  whose payload is a hostname. It is safe today only because the planner never sees private data
+  it could encode — so the "no tool output into the planner" rule is now documented as
+  load-bearing, not incidental.
+- **Nothing was decided.** Eleven candidates, ten owner questions, zero code. The one item that is
+  a plain recommendation (a `--runs k` / `pass^k` option in the eval drivers) was deliberately not
+  implemented either — the task was research, and the charter's scope rule applies to me too.
+- **Verification honesty:** no tests, benchmarks or live systems were run for this document;
+  repository facts were checked by reading files at `48d9771`. No commit or push was made this
+  turn (none was instructed).
+
+## 2026-09-06 · C6 — `pass^k` in the eval drivers (ADR-0027), first item of the owner-gated sequence
+
+- **Inspect-before-modify paid for itself within ten minutes.** Reading the M2 driver alongside
+  `providers/breaker.py` raised a question the code could not answer on paper — *does the fixed
+  `/tmp` state dir let the breaker count refusals across invocations?* — so I ran the unchanged
+  driver four times. Invocations 1–3 passed 9/9; the fourth failed 6/9 with `BREAKER_OPEN`. The
+  driver had been quietly un-rerunnable for anyone iterating locally, and CI's fresh runners hid
+  it. A `--runs K` feature with K ≥ 4 was literally impossible until that was fixed, which is why
+  the fix is in this item and not parked as a recommendation (guideline 15 applies to scope, not
+  to preconditions).
+- **The metric was fetched, not remembered.** I re-read τ-bench §3 for the exact estimator
+  (`C(c,k)/C(n,k)`, averaged over tasks) rather than implement "all k pass" from memory; the
+  binomial form is what makes a 5-run session yield the whole `pass^1 … pass^5` curve instead of
+  a single number, and it collapses to today's pass rate at n = 1 — which is the property the
+  tests pin and the reason `--runs 1` is byte-compatible.
+- **Baseline first, then diff.** Both drivers were run from the pre-change tree into a baseline
+  JSON before editing; after editing, `--runs 1` console output was diffed (identical apart from
+  the results path I chose) and every pre-existing JSON field compared value-by-value (identical;
+  only additive keys). That is a stronger claim than "should be unchanged", and it cost two
+  minutes.
+- **A test is only evidence if it can fail.** I reverted the isolation fix in a scratch copy and
+  ran the new `--runs 5` test: 3/5 passes instead of 5/5, exactly the breaker threshold. Restored,
+  9/9. Without that check the test would have been an assertion of intent, not of behaviour.
+- **Two honest exclusions and one honest limit.** `m1` mutates hosts, `m3` exposes only an
+  aggregate verdict, `m5` needs an X stack this sandbox lacks — all three keep today's interface
+  and are named in ADR-0027 D5 rather than half-instrumented. And `pass^k` on scripted/KB-only
+  drivers measures *determinism*, not model reliability; the informative lane is the weekly real-
+  Ollama job, which cannot run here and is recorded as follow-up C6b for the owner.
+- **A tooling trap worth recording:** bare `pytest` (venv entry point) fails
+  `tests/test_intent_model.py::test_vocabulary_covers_the_whole_catalog` with
+  `ModuleNotFoundError: training` because only `python -m pytest` puts the repo root on
+  `sys.path`. Pre-existing, unrelated to this change (reproduced with my files stashed); CI's
+  `unit_gate.py` uses `sys.executable -m pytest`, so the gate is unaffected. Noted as a
+  recommendation (a `pythonpath = ["."]` pytest option), not changed.
+- **Verified here:** `ruff check .` / `ruff format --check .` clean (184 files); `mypy src/jarvis`
+  clean (78 files) and `mypy --strict` clean on the new harness module + test; `python -m pytest`
+  **865 passed, 2 skipped** (the two live-LLM gates); M2 `--runs 5` 9/9 with `pass^1…5 = 1.0`
+  in 27 s; M4 `--runs 3` 10/10, 0 unverifiable claims. **Not verified:** CI execution
+  (`api.github.com` unreachable from the sandbox); any real-model run. No commit or push was
+  made (none instructed).

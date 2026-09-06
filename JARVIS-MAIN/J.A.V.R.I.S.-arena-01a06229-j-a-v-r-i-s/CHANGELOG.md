@@ -59,6 +59,51 @@ below each entry were corrected in place.
   `"allow": true` hint (`mcp_server._REFUSAL_HINT`), which is what lets a front end tell a
   consent decision apart from an unconditional refusal.
 
+### Added — `pass^k` reliability in the eval drivers (2026-09-06, ADR-0027; harness + tests only, no runtime change)
+- **`--runs K` on `evals/harness/m2_eval.py` and `m4_grounding.py`** (default `1`). Every
+  catalog case is executed K times; a case passes only when *all* K runs pass, and the summary
+  reports τ-bench's `pass^1 … pass^K` curve (`pass^k = E_task[C(c,k)/C(n,k)]`, arXiv:2406.12045
+  §3) — the estimator ADR-0001's ≥ 98 % target actually needs. At `--runs 1` the console output
+  is identical to before and every pre-existing JSON field keeps its value; the summary gains
+  `runs` and `pass_hat`, each case gains `passes`, `runs`, `runs_detail` (verified by field-by-field
+  diff against the pre-change driver). CI invocations are unchanged. `m1`/`m3`/`m5` are
+  deliberately excluded (host-mutating, aggregate-only, X-stack cost — ADR-0027 D5).
+- **`evals/harness/passk.py`**: the stdlib estimator (`math.comb`), the shared `--runs` argument
+  (rejects `0`/negative/non-integer before any case runs) and the console rendering.
+- **Tests (`tests/test_eval_passk.py`, +9)**: estimator pinned to the paper's formula and to the
+  identity `pass^1 at n=1 == passed/total`; both drivers exercised end to end as subprocesses
+  (default = single pass, `--runs 5` isolation + curve, pinned `JARVIS_STATE_DIR` honoured,
+  invalid `--runs` rejected). The `--runs 5` test was shown to fail (3/5 instead of 5/5) when the
+  state-isolation fix below is reverted, then pass again with it.
+
+### Fixed — eval harness state leaked across invocations (found while adding `--runs`)
+- `m2_eval.py` pinned every case's state to `/tmp/jarvis-m2-eval-<case-id>`, so the three
+  refusal cases that legitimately record one ADR-0014 breaker failure each **opened the breaker
+  on the 4th local invocation within 300 s** and failed 6/9 with `BREAKER_OPEN` — a harness
+  artefact, never a kernel defect, invisible in CI (fresh runner per job). Reproduced on
+  2026-09-06 (invocations 1–3: 9/9; invocation 4: 6/9). Each `(case, run)` now gets a
+  `tempfile.mkdtemp` directory (mode 0700, honours `TMPDIR`) that is removed on pass and **kept
+  with its path printed on failure** so the journal stays available as evidence.
+  `m4_grounding.py` keeps its `setdefault` contract — an explicit `JARVIS_STATE_DIR` is honoured
+  and never deleted — and otherwise isolates per run the same way. `m2_eval.py` also now records
+  a CLI timeout as `driver_error` for that run instead of aborting the whole driver.
+
+### Added — deep research II (2026-09-06, owner-directed; research only, no code change)
+- **`docs/RESEARCH-agent-construction-and-future-tech-2026.md`**: how an agent is actually built
+  (harness anatomy, ReAct/Plan-and-Execute/ReWOO/Reflexion, brain/hands/session split, tools as
+  contracts) and what would make JARVIS more capable, environment-aware and self-sustaining —
+  security-by-design (lethal trifecta, six patterns, CaMeL/Progent/AgentSpec/SAL, OWASP 2026 LLM
+  Top 10 + Agent Control Standard, Landlock/bubblewrap/systemd hardening), "surviving" in its
+  engineering sense (sd_notify watchdog, resumable task log with idempotency, budgeted self-healing,
+  integrity), Linux environment signals (logind `PrepareForSleep`, session lock, NetworkManager/
+  UPower, inotify, per-compositor idle) feeding the propose-only briefing engine with Horvitz's
+  expected-utility rule, memory/learning without self-modification (Reflexion notes, offline
+  GEPA-style prompt optimization, sleep-time digest), local inference (constrained decoding
+  confirmed already shipped via Ollama `format`), protocol drift (MCP 2026-07-28 deprecations,
+  `SKILL.md`), and evaluation (`pass^k`, OSWorld 2.0). 56 sources with per-claim `[fetched]` /
+  `[snippet]` provenance and VERIFIED-IN-REPO / ASSUMED labels; eleven roadmap candidates C1–C11
+  mapped to modules and ADRs; ten decisions posed to the owner. Nothing implemented.
+
 ### Added
 - **Documentation sweep** (owner-directed, docs-only — ships without a tag per the docs-only
   convention): README repaired (a pre-existing mid-sentence paragraph split around the

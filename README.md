@@ -77,6 +77,9 @@ against a real `jarvis mcp serve`.
   and `AGENT-EXPERIENCE.md`. The root [`CHANGELOG.md`](CHANGELOG.md) records only
   changes to the combined repository itself and cross-cutting audits, and links
   to the detailed entries.
+- **Task list.** [`TASKS.md`](TASKS.md) tracks the owner-gated follow-through of
+  the 2026-09-06 deep research (candidates C1–C11): per-item sub-tasks,
+  acceptance, verification plan, sandbox limits, and the owner's decisions.
 - **Licensing.** The HUD is MIT (`JARVIS-GUI/…/LICENSE`, with Qt used unmodified
   under LGPLv3 — see its `THIRD-PARTY-NOTICES.md`). The kernel's licence is an
   owner decision still pending (its `pyproject.toml` says so explicitly); no

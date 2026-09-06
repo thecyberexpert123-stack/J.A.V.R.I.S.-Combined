@@ -59,3 +59,32 @@ GitHub reachability from the sandbox, verified with and without a token, and
 are recorded as an environment limit rather than glossed. The resident HTTP
 transport was not re-driven live this round. Nothing was merged; `main` was not
 touched.
+
+---
+
+## 2026-09-06 · Deep research II (cross-cutting note)
+
+The research task that followed the audit lives in the kernel's docs
+(`JARVIS-MAIN/…/docs/RESEARCH-agent-construction-and-future-tech-2026.md`) and
+its detailed experience entry is in the kernel's log. Two things touch the
+combined tree specifically: (1) the MCP `2026-07-28` findings apply to *both*
+halves — the kernel echoes any date-shaped `protocolVersion` and the HUD pins
+`2025-03-26`, and neither uses the newly deprecated Roots/Sampling/Logging; a
+migration, if wanted, is a two-repo change and is posed to the owner as a
+question, not started; (2) the environment-signal candidates (suspend/resume,
+lock, network, battery, idle) would be sensed by the kernel's opt-in doorway and
+*surfaced* by the HUD — a seam that the audit showed is exactly where defects
+hide, so any future ADR on it should specify the wire shape first. No code, no
+commit, no push this turn.
+
+## 2026-09-06 · Sequence item C6 (cross-cutting note)
+
+The first follow-through item touched only the kernel's eval harness, so the
+substantive log lives in the kernel `AGENT-EXPERIENCE.md`. Two things matter at
+the combined-repo level: (1) the inspection step found that the M2 driver had
+been un-rerunnable locally (fixed `/tmp` state dir + ADR-0014 breaker → 6/9
+false failures on the 4th run within five minutes) — invisible in CI, visible
+the moment someone iterates in a checkout like this one; (2) the GUI half is
+untouched by C6, and the next item that crosses the seam is C7 (MCP
+`protocolVersion`), which remains an owner question. Working tree still
+uncommitted pending the owner's commit instruction (`TASKS.md` A4 / D3).

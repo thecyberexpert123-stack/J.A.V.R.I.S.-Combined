@@ -26,6 +26,8 @@ Plan accepted 2026-09-02; open decisions recorded in [`docs/PLAN.md` §13](docs/
 | Plan & architecture | [`docs/PLAN.md`](docs/PLAN.md) |
 | Research & evidence | [`docs/RESEARCH.md`](docs/RESEARCH.md) |
 | 2026 deep research & roadmap | [`docs/RESEARCH-jarvis-agent-linux-2026.md`](docs/RESEARCH-jarvis-agent-linux-2026.md) |
+| 2026 deep research II — agent construction & future tech | [`docs/RESEARCH-agent-construction-and-future-tech-2026.md`](docs/RESEARCH-agent-construction-and-future-tech-2026.md) |
+| Follow-through sequence for research II (owner-gated; C6 `pass^k` shipped as ADR-0027) | [`../../TASKS.md`](../../TASKS.md) · [`docs/adr/0027-passk-eval-reliability.md`](docs/adr/0027-passk-eval-reliability.md) |
 | Change log | [`CHANGELOG.md`](CHANGELOG.md) |
 | Development experience log | [`AGENT-EXPERIENCE.md`](AGENT-EXPERIENCE.md) |
 

@@ -1,0 +1,167 @@
+# Task list — Deep Research II follow-through (opened 2026-09-06)
+
+Owner instruction: *"continue … follow my guidelines … create a task list to make sure of all."*
+This file is the single checklist for turning the eleven candidates in
+[`docs/RESEARCH-agent-construction-and-future-tech-2026.md`](JARVIS-MAIN/J.A.V.R.I.S.-arena-01a06229-j-a-v-r-i-s/docs/RESEARCH-agent-construction-and-future-tech-2026.md)
+into owner-gated, charter-compliant work. It is updated in the same change-set as the work it
+tracks (guideline 4). Nothing here is done until its box is ticked **and** the verification column
+says how it was verified.
+
+Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked / needs owner ·
+`[-]` dropped (reason recorded).
+
+## 0. Ground rules that apply to every item
+
+| Rule | How it is enforced in this sequence |
+|---|---|
+| Sign-off gates (charter Part C) | Every item begins with an **ADR draft**; no code for that item until the owner accepts the ADR. Items flagged *security-sensitive* additionally pause on their design choices (guideline 20). |
+| Never merge (guideline 23) | All work on `arena/01a0717a-j-a-v-r-i-s-combined`; `main` untouched. Commits/pushes only as the owner instructs (§D records the policy). |
+| Research before implementing (3) | Each item cites the research section it comes from; new facts needed during implementation are fetched and cited, never assumed. |
+| No new dependency without justification (16) | Stdlib-only remains the default (ADR-0005). Any item that would need a binary or library stops at the ADR with the dependency case written out. |
+| Preserve interfaces (17) | CLI verbs, MCP tool names/payloads, journal schema, and unit-file contents are interfaces. Additive changes only; any breaking change is flagged in the ADR and CHANGELOG. |
+| Failure modes (18) | Each ADR carries a failure-mode table; each feature degrades to today's behaviour when its precondition is absent (no `NOTIFY_SOCKET`, no bus, no Landlock). |
+| Verification honesty (21) | Each item's "Verified / Not verified / Limits" block below is filled from real runs. Sandbox limits (§C) are stated, not glossed. |
+| Changelog + experience log (4) | Kernel `CHANGELOG.md` + `AGENT-EXPERIENCE.md` per item; root logs for cross-cutting notes; PLAN.md milestone row per shipped item. |
+| Self-review before "done" (22) | The §E checklist is run per item and its outcome logged. |
+
+## A. Housekeeping (no owner decision needed beyond commit policy)
+
+- [x] **A1.** Research II document written, cross-checked against source (56 sources, all cited; provenance labels; VERIFIED-IN-REPO/ASSUMED split).
+- [x] **A2.** Kernel `CHANGELOG.md`, `AGENT-EXPERIENCE.md`, `README.md` index row; root `CHANGELOG.md`/`AGENT-EXPERIENCE.md` updated.
+- [x] **A3.** This task list created and linked from the root README.
+- [!] **A4.** Commit the research + task-list docs to the arena branch and push — **awaiting explicit commit instruction** (§D3: "no merge" confirmed; commit/push not yet explicitly authorized).
+
+## B. Candidate items (order = proposed; final order recorded in §D)
+
+Each block: origin → sub-tasks → acceptance → verification plan → sandbox limits. "Size" is an
+estimate. Version numbers are assigned when an item starts (project convention: one minor bump
+per shipped behaviour change; docs-only ships without a tag).
+
+### B-C6 · `pass^k` reliability in the eval drivers — *pre-approved (D4); no behaviour change* (S) — `[x]` done 2026-09-06 (ADR-0027; uncommitted, see A4)
+Origin: research §9 (τ-bench `pass^k`; a 98% target is a `pass^k` target).
+- [x] Inspect `evals/harness/m2_eval.py`, `m3_faults.py`, `m4_grounding.py`, `m5_gui.py`, `m1_eval.annotate`, `providers/breaker.py`, and how `ci.yml` calls them. **Finding:** the fixed `/tmp/jarvis-m2-eval-<id>` state dir let the ADR-0014 breaker accumulate the refusal cases' failures → the 4th local invocation within 300 s failed 6/9 with `BREAKER_OPEN` (reproduced). Precondition for any K ≥ 4; fixed in this item.
+- [x] `--runs K` (default 1) on `m2_eval.py` and `m4_grounding.py`; per-case `passes/runs/runs_detail`, suite `runs` + `pass_hat` curve; existing fields unchanged (field-by-field diff against the pre-change driver). `m1`/`m3`/`m5` excluded with reasons (ADR-0027 D5).
+- [x] `evals/harness/passk.py` (stdlib estimator `C(c,k)/C(n,k)`, shared `--runs` argument, rendering) + `tests/test_eval_passk.py` (9 tests: formula, `pass^1 at n=1 == pass rate`, monotone curve, input rejection, both drivers end-to-end incl. keep-on-fail state dirs and pinned `JARVIS_STATE_DIR`). The isolation test was shown to fail (3/5) with the fix reverted.
+- [x] Docs: ADR-0027; kernel CHANGELOG (`Added` + `Fixed`), AGENT-EXPERIENCE entry, PLAN §3 sentence + R-II row, README index row. No `evals/results/README` exists (nothing to update there).
+- Acceptance: CI invocations unchanged (verified by reading `ci.yml`; CI itself not runnable from here); `--runs 5` on the M2 catalog produces the `pass^k` table; no runtime code touched (`src/jarvis` diff is empty).
+- **Verified (real runs, 2026-09-06):** M2 `--runs 1` console output identical to baseline; M2 `--runs 5` 9/9, `pass^1…5 = 1.0000`, 27 s, zero leftover temp dirs; M4 `--runs 1` console identical, `--runs 3` 10/10 / 0 unverifiable claims; forced-failure catalog keeps one 0700 state dir per failing run with the path printed; `--runs 0`/`abc` rejected with exit 2; `ruff check .`, `ruff format --check .` (184 files), `mypy src/jarvis` (78 files), `mypy --strict` on the new module + test, `python -m pytest`: **865 passed, 2 skipped**.
+- **Not verified:** GitHub Actions execution of the unchanged invocations; any real-model (`llm-eval.yml`) run.
+- **Limits:** on scripted/KB-only drivers `pass^k` measures determinism; model reliability needs the weekly Ollama lane (→ C6b). No version bump: harness/tests/docs only (RELEASING precedent).
+- [ ] **C6b (follow-up, owner to schedule):** extend `pass^k` to the real-model lane — `tests/test_fault_injection_live.py` corpus repeated K times under `RUN_LIVE_LLM=1`, and `m4_grounding.py --runs K` on a host with Ollama (the two refusal cases then exercise `knowledge/ai_answer.py`). Needs a workflow edit + an Ollama host; cannot be executed or verified from this sandbox.
+
+### B-C11 · Hash-chained task journal (evidence chain) — *pre-approved (D4); low risk* (S)
+Origin: research §3.4 (SAL evidence chain), §3.5 (ACS); precedent `context/store.py` M9c chain.
+- [ ] Inspect `journal/sqlite.py` (schema, every writer), `context/store.py` M9c chain, `safety/integrity.py` + `_cmd_doctor`, all journal callers.
+- [ ] ADR draft; implement; tests (tamper matrix, migration, concurrency); `jarvis doctor` surface; docs.
+- Acceptance: `jarvis doctor` covers the journal; performance measured; old DB opens and reads identically.
+
+### B-C3 · Doorway survival: `sd_notify` watchdog + `STATUS=` + per-unit hardening — *OWNER-Q* (S–M)
+Origin: research §4.2 (`sd_notify(3)`), §3.7 (systemd hardening); baseline measured 2026-09-06: current doorway unit scores **9.6 UNSAFE** in `systemd-analyze security --offline`.
+- [ ] Inspect `cli/serve.py` (`run_server`, `unit_content`), `brief/install.py`, `safety/charter.py` unit builders; how `sudo -n` steps run from the doorway.
+- [ ] ADR draft with **two separable decisions**: (D1) stdlib `NOTIFY_SOCKET` client (`READY=1`, `WATCHDOG=1` at `WATCHDOG_USEC/2`, `STATUS=` lines, `STOPPING=1`), no-op when unset; unit gains `Type=notify`, `WatchdogSec=`, `Restart=on-watchdog`; (D2) hardening directive set per unit with the carve-outs the state dir and `sudo -n` need — **each directive justified, `NoNewPrivileges=` explicitly excluded for units that may run T1/T2 steps**, target exposure score recorded.
+- [ ] Owner accepts → implement D1 (client + unit text + tests with a fake `AF_UNIX` datagram socket); implement D2 (unit text only) with `systemd-analyze security --offline` run in tests when the binary exists (skips honestly otherwise).
+- [ ] Failure modes in ADR: watchdog must **never** be wired to integrity drift (charter: failure = pause); a hung request must not starve the ping (ping from the serving thread's idle loop, not from request handlers).
+- Acceptance: doorway unit exposure score improves from 9.6 to the ADR's target; `jarvis serve` behaviour unchanged when not under systemd.
+- Verification plan: unit tests; offline `systemd-analyze security` before/after; **live watchdog restart must be verified on the owner's machine** (`systemctl --user`), with the exact commands written in the ADR.
+- Sandbox limits: no user systemd instance / no bus here → restart-on-watchdog cannot be observed in the sandbox.
+
+### B-C1 · Owner-authored, narrowing-only argument policy — *OWNER-Q; security-sensitive* (M)
+Origin: research §3.3 (Progent monotonic confinement, CaMeL), §3.4 (AgentSpec: human-owned rules).
+- [ ] Inspect `safety/tiers.py` (`check_argv`, validators), `planner/catalog_common.py clean_arg`, playbook `build()` param flow, `integrity.default_scope()`, `safety/charter.py` JSON conventions.
+- [ ] ADR draft: policy file format (JSON, owner-written, integrity-scoped like charters); rule shape = `{playbook, arg, deny_regex | allow_prefixes}`; **rules can only refuse** — they never grant, never raise a tier, never bypass consent; evaluation point = the same place `check_argv` runs (all three call sites in `core/orchestrator.py`); refusal text names the rule; `jarvis policy lint|show`.
+- [ ] Owner decides: integrity-scoped (needs re-baseline to edit) **or** operational (`.state`-style); default rule set shipped empty.
+- [ ] Owner accepts → implement; tests: rule refuses, absent rule = today's behaviour, malformed file = refuse-to-load with clear message (fail closed), undo steps re-validated too.
+- Acceptance: M3 fault suite still 0 escapes; new negative tests; no playbook behaviour changes without a rule present.
+- Verification plan: unit + fault suite + full gate; `jarvis policy lint` on sample files.
+- Sandbox limits: none.
+
+### B-C4 · Environment signals as briefing inputs (propose-only) — *OWNER-Q* (M)
+Origin: research §5 (logind `PrepareForSleep`/`PrepareForShutdown`, session lock, NetworkManager/UPower, inotify, idle), §5.3 (Horvitz threshold), §5.4 signal table.
+- [ ] Inspect `brief/engine.py compose()/decide()/deliver`, `BriefLedger`, ADR-0021 deliver rules, ADR-0018 doorway loop, `voice/` fixed-argv pattern.
+- [ ] Fetch-and-cite the exact UPower / NetworkManager interface names (research §11 lists them as unverified) before the ADR.
+- [ ] ADR draft: (D1) which signals (owner prunes the §5.4 table); (D2) **poll-at-briefing-time only** (`busctl get-property` fixed argv, works in the oneshot) vs an opt-in **listener in the doorway** (`busctl monitor`/`dbus-monitor` fixed argv, long-lived); (D3) interruption-cost inputs to `decide()` (idle, lock, sleep-imminent suppress); (D4) wire shape to the HUD (the audit showed the seam is where defects hide).
+- [ ] Owner accepts → implement behind the existing opt-in; every signal is a *line in the briefing*, never a trigger; tests with captured `busctl` output fixtures.
+- Acceptance: with no bus present the briefing is byte-identical to today; with fixtures, items and suppressions appear as specified; ADR-0017 D3 intact (no execution path added).
+- Verification plan: fixture tests + full gate; **live signal capture on the owner's machine** (commands in the ADR: `busctl --system monitor org.freedesktop.login1`, etc.).
+- Sandbox limits: no system/session bus, no `gdbus`/`dbus-monitor`, no `notify-send` → live sensing cannot be verified here.
+
+### B-C2 · Resumable task log + idempotency flags (offer resume/undo after a crash) — *OWNER-Q; touches the sole execution path* (M–L)
+Origin: research §2.3 (Managed Agents session log), §4.3.
+- [ ] First: **measure** — query the journal schema for interrupted/failed multi-step tasks to establish whether the problem occurs (data-driven go/no-go, recorded in the ADR).
+- [ ] ADR draft: per-playbook `idempotent` flag; per-step `started/finished` events; on next invocation, an interrupted task is *reported* with the options resume (idempotent steps only, otherwise ask) / undo / dismiss — never auto-resumed; model-visible state (if any) machine-owned JSON.
+- [ ] Owner accepts → implement; tests: crash between steps (fake runner raising), resume path, non-idempotent step asks, undo path unchanged.
+- Acceptance: existing 856 tests unchanged in outcome; kill-switch semantics (exit 130) unchanged.
+- Verification plan: unit + fault suite + full gate.
+- Sandbox limits: none.
+
+### B-C7 · MCP `2026-07-28` migration plan — *OWNER-Q; two-repo* (S plan / M do)
+Origin: research §8.1. Kernel echoes any date-shaped `protocolVersion` (fallback `2024-11-05`); HUD pins `2025-03-26`; neither uses Roots/Sampling/Logging.
+- [ ] Fetch and cite the **specification text** (not the blog) for the stdio transport under the stateless core; record what actually changes for `initialize`/`notifications/initialized`.
+- [ ] Write the plan as an ADR (kernel) + a linked note in the HUD docs: negotiate both, keep fallback, deprecation dates.
+- [ ] Owner decides whether to execute; if yes, implement in kernel then HUD, with live handshake capture as in the audit.
+- Verification plan: live `jarvis mcp serve` handshake capture (works in sandbox); HUD unit + QML gates with GL stubs.
+- Sandbox limits: none for stdio.
+
+### B-C8 · `SKILL.md` import/export for app packs — *OWNER-Q* (M)
+Origin: research §8.2; tiers remain the enforcement regardless of `allowed-tools`.
+- [ ] Inspect ADR-0026 pack loader (`gui/appskill.py`), receipts (`planner/skills.py`).
+- [ ] ADR draft: mapping table pack ⇄ `SKILL.md` frontmatter; on import the receipt and tier ceiling are applied, `allowed-tools` is advisory only and is *checked against* the pack's declared actions.
+- [ ] Owner accepts → implement + round-trip tests.
+- Sandbox limits: none.
+
+### B-C10 + B-C11 bundle option · Release provenance — *OWNER-Q* (S)
+Origin: research §3.6; `release.yml` has no checksum manifest and no PyPI step.
+- [ ] ADR draft (may be bundled with C11 as a "provenance" ADR): `SHA256SUMS` generated in `release.yml` and attached to the draft release; Trusted Publishing + PEP 740 attestations documented as the path if an index is ever used.
+- [ ] Owner accepts → implement the workflow step; verify with a `workflow_dispatch` run **only if the owner permits a push**.
+- Sandbox limits: cannot run GitHub Actions here; the step is testable locally with `sha256sum -c`.
+
+### B-C9 · Owner-run offline prompt optimization (GEPA-style) — *OWNER-Q* (M)
+Origin: research §6.2; ADR-0013 non-goal preserved (runtime never self-edits).
+- [ ] ADR draft only at first: inputs (eval catalog + injection corpus), loop (owner-run script, local model), output (a *candidate* prompt file + diff + eval report; never applied automatically), acceptance rule (must not regress the injection corpus or `pass^k`).
+- [ ] Owner decides whether to build the script.
+- Sandbox limits: no Ollama → the script cannot be exercised here beyond dry-run.
+
+### B-C5 · Sandboxing the hands (Landlock via `ctypes` vs bubblewrap) — *OWNER-Q; dependency decision* (L)
+Origin: research §3.7; sandbox check 2026-09-06: Landlock ABI 2 present on kernel 6.1; `bwrap` absent.
+- [ ] ADR draft comparing: (a) `ctypes` Landlock self-restriction around T0 read-only steps (no dependency; ABI-gated best-effort; **explicit requests fail closed**), (b) `bwrap` (external binary, new dependency), (c) defer. Include what each does *not* protect against.
+- [ ] Owner decides; implement only if (a) or (b) is chosen.
+- Sandbox limits: Landlock (a) is testable here (ABI 2 → filesystem rules only); (b) is not.
+
+## C. Verification matrix (sandbox vs owner machine)
+
+| Capability | Sandbox (this session) | Owner's machine |
+|---|---|---|
+| Unit/type/lint gates, M2/M3/M4 evals (stub LLM) | Yes | Yes |
+| Live LLM lanes (`RUN_LIVE_LLM`, `pass^k` with a real model) | **No** (no Ollama) | Yes |
+| `systemd-analyze security --offline` on unit text | Yes (systemd 252) | Yes |
+| Watchdog restart, `systemctl --user status` STATUS line | **No** (no user manager) | Yes |
+| D-Bus signals (logind/NM/UPower), `notify-send` | **No** (no bus, binaries absent) | Yes |
+| MCP stdio handshake capture | Yes | Yes |
+| Landlock self-restriction | Yes (ABI 2, fs rules) | Depends on kernel |
+| GitHub Actions runs | **No** (api.github.com unreachable) | Yes |
+
+## D. Decision log (owner answers; filled as they arrive)
+
+| # | Question | Answer | Date |
+|---|---|---|---|
+| D1 | Scope of "continue" | **Full sequence, gated per ADR** (draft ADR → owner acceptance → implement + test + docs → next). | 2026-09-06 |
+| D2 | Execution order | **Proposed order accepted:** C6 → C11 → C3 → C1 → C4 → C2 → C7 → C8 → C10 → C9 → C5. | 2026-09-06 |
+| D3 | Commit/push policy | Owner's words: *"No merge, and all, that is what I wanted to say."* Recorded as: **never merge** (guideline 23 reaffirmed). Whether each finished item may be committed + pushed to the arena branch was not stated explicitly; to be confirmed with the owner when the first item is ready, not assumed. | 2026-09-06 |
+| D4 | Per-item gating | **Pre-approve low-risk, pause on security:** C6, C11, C7-plan, C10 may go ADR → code without a pause; C1, C2, C3, C4, C5, C8, C9 pause at the ADR for acceptance. | 2026-09-06 |
+
+## E. Definition of done — per item (guideline 22 self-review)
+
+- [ ] Inspected before modifying; diff limited to the item; every change justified in the ADR or CHANGELOG.
+- [ ] No new dependency; interfaces preserved or the break flagged.
+- [ ] Failure modes listed and each degrades to today's behaviour.
+- [ ] Tests added for the new behaviour **and** the absent-precondition path; full gate green (ruff, ruff format, mypy strict, pytest; M2/M3/M4 where relevant).
+- [ ] CHANGELOG + AGENT-EXPERIENCE + PLAN row + README (if user-visible) updated in the same change-set.
+- [ ] "Verified / Not verified / Limits" written from actual runs; sandbox limits named.
+- [ ] Nothing merged; `main` untouched; commits/pushes per §D3 only.
+
+## F. Recommendations recorded on the way (not in scope; guideline 15)
+
+| # | Found while | Recommendation |
+|---|---|---|
+| F1 | C6 full gate | Bare `pytest` (venv entry point) fails `tests/test_intent_model.py::test_vocabulary_covers_the_whole_catalog` with `ModuleNotFoundError: training`; only `python -m pytest` puts the repo root on `sys.path`. CI's `unit_gate.py` uses `sys.executable -m pytest`, so the gate is unaffected. Consider `[tool.pytest.ini_options] pythonpath = ["."]` so both spellings agree. Pre-existing; reproduced with the C6 files stashed. |
+

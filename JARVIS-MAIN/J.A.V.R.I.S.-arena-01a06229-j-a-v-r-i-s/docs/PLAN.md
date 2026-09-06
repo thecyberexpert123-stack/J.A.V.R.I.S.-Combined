@@ -74,6 +74,8 @@ not do that. Instead we make 98% a **measured, scoped, auditable engineering tar
 This matches the owner's own rule #2 (*"does not blindly do any task"*) and converts point 3 from a
 marketing number into a quality gate: **the catalog grows only when its tasks hold ≥98% in CI.**
 
+Since ADR-0027 the scripted drivers (`m2_eval.py`, `m4_grounding.py`) can run every case K times (`--runs K`) and report τ-bench's `pass^k` — the probability that *all* K trials pass — so the ≥98 % figure can be read as a consistency claim rather than a single lucky pass.
+
 > **ADOPTED 2026-09-02** via [ADR-0001](adr/0001-scoped-success-metric.md) (authority delegated by owner).
 
 ---
@@ -239,6 +241,7 @@ J.A.V.R.I.S./
 | **M11** Learned intent recall (ADR-0015, owner-directed 2026-09-04) — **SHIPPED in 1.10.0**: a purpose-built neural classifier (proposals-only recall widener after engine-miss + planner-decline; never a fallback executor) | Tiny MLP (256-dim hashed n-grams → 48 ReLU → softmax over 12 playbook families + `unknown`); ~13K params as package data; stdlib inference; seeded gated trainer in-repo (gates on rounded shipped weights); suggestion = extractor + real-matcher-revalidated text the user types; `--no-ai` honored; MCP untouched | Research: `docs/RESEARCH-tiny-intent-models-2026.md`; acceptance: hand-written eval sets independent of the training generator (top-1 ≥ 0.9, top-3 = 1.0, OOD abstain ≥ 0.85), every suggestion engine-legal, AI-less suite green; limitations documented (synthetic corpus distribution, English-only) |
 
 | **R-series** (2026 deep research → owner-directed "continue" sequence) — **COMPLETE v1.12.0–v1.18.0**: hybrid residency (ADR-0018, 1.12.0) · voice front-end (ADR-0019, 1.13.0) · owner-taught file memory (ADR-0020, 1.14.0) · scheduled propose-only briefings (ADR-0021, 1.15.0) · guarded desktop awareness, read-only AT-SPI tier (ADR-0022, 1.16.0) · full-vocabulary intent retrain (ADR-0023, 1.17.0) · synthesis-over-sources digest `sys.digest` (ADR-0024, 1.18.0) | Catalog 12 → 57 playbooks; suite 794 passed + 2 honest skips; 22 draft releases queued for owner review | Research: `docs/RESEARCH-jarvis-agent-linux-2026.md`; acceptance per ADR-0018…0024; guideline-compliance table in each milestone report; **nothing merged, `main` untouched** |
+| **R-II series** (deep research II → owner-directed "continue" sequence, `TASKS.md` at the combined-repo root) — **IN PROGRESS**: C6 `pass^k` reliability in the eval drivers (ADR-0027, harness + tests only, no tag) | `--runs K` on the M2/M4 drivers with τ-bench's `pass^k` curve; per-run state isolation closed a local-rerun breaker artefact; suite 865 passed + 2 honest skips | Research: `docs/RESEARCH-agent-construction-and-future-tech-2026.md`; order C6 → C11 → C3 → C1 → C4 → C2 → C7 → C8 → C10 → C9 → C5; security-sensitive items pause at their ADR; **nothing merged, `main` untouched** |
 
 ---
 
