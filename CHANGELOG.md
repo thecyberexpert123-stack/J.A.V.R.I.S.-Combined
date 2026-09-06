@@ -38,6 +38,14 @@ repository is not versioned independently; the sub-projects are.
   local-rerun breaker artefact found during inspection), 9 new tests; kernel
   suite 865 passed + 2 skipped. Details in the kernel `CHANGELOG.md`;
   `TASKS.md` B-C6 carries the verified / not-verified / limits block.
+- **Sequence item C11 — task-journal evidence chain** (2026-09-06, kernel
+  ADR-0028; first runtime change of the sequence — kernel bumped to **1.21.0**
+  on owner authorization, PKGBUILD/spec synced): every journal write
+  hash-linked in-transaction, `jarvis doctor` now verifies the journal (edits,
+  deletions, forgeries and event wipes reported; exit 1 on tampering), additive
+  migration of existing journals, 18 new tests; kernel suite 883 passed + 2
+  skipped, M3 fault gate 0 escapes. GUI untouched. Details in the kernel
+  `CHANGELOG.md`; `TASKS.md` B-C11 carries the verification block.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the

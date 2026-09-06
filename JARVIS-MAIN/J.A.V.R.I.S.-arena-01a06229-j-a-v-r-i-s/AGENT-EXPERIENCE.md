@@ -348,3 +348,44 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   in 27 s; M4 `--runs 3` 10/10, 0 unverifiable claims. **Not verified:** CI execution
   (`api.github.com` unreachable from the sandbox); any real-model run. No commit or push was
   made (none instructed).
+
+## 2026-09-06 · C11 — journal evidence chain (ADR-0028), second item of the sequence
+
+- **The obvious design was wrong for this table, and it took reading the precedent closely to
+  see why.** M9c's digest is `sha256(sorted(row hashes))`, recomputed from whatever rows exist on
+  every write. For a store touched a few times a week that is fine; for a journal written on
+  every task, step and brief-timer run it means **a deleted row is healed into a fresh, valid
+  digest by the next legitimate write** — within minutes. Copying M9c literally would have let me
+  write "deletions are detected" in an ADR while the code quietly forgot them. The chain
+  therefore links *write events* (append-only, `prev_hash`), and `AUTOINCREMENT`'s never-reuse
+  property is what makes a wiped or truncated event table stay visible after later writes.
+- **Rows here are mutable; events are not.** `finish_task` rewrites `status`, `mark_undo_applied`
+  rewrites the artifact. So the verifier compares each row with its *latest* attested hash, not
+  its first — which is also why the tests check that restoring a flipped value restores the
+  verdict: the chain attests content, not time. Both hashing sites call one function on a
+  re-read row, so writer and verifier can never disagree about bytes.
+- **Concurrency was designed, then attacked.** The link happens inside the transaction that
+  already holds SQLite's RESERVED lock from the row DML, so the tail read and the event insert are
+  atomic with respect to other writers. I broke that on purpose (commit the row, then link) and
+  the three-process test failed with `UNIQUE constraint failed: journal_chain.seq` on the second
+  of three runs — flaky exactly as a race should be — then passed reliably with the invariant
+  restored. The backfill's `BEGIN IMMEDIATE` was tested the same way: four simultaneous first
+  opens, one backfill.
+- **Measured before claiming "near-zero cost."** +0.2 ms per write on this sandbox, 49 ms to
+  absorb a 2 000-row legacy journal, 28 ms to verify 2 600 events. Numbers are in the CHANGELOG
+  rather than adjectives.
+- **What I did not do, and why:** no new verb (`doctor` already owns this verdict), no anchoring
+  of the head in the M9c baseline (it moves on every write and would drift immediately), no
+  silent anchor written by `doctor` (a read-only verb must stay read-only). Both anchoring
+  options are recorded for the owner as C11b, and the ADR's limitation paragraph says plainly
+  that the chain makes tampering visible, not impossible.
+- **Version discipline:** this is the first runtime change of the sequence, so it targets
+  1.21.0 — but I have not touched `__version__`/`pyproject`: the bump belongs to the
+  owner-authorized commit/tag step, not to a working tree that is still awaiting a commit
+  instruction. The CHANGELOG says so in the heading.
+- **Verified here:** `ruff check .` / `ruff format --check .` clean; `mypy src/jarvis` clean;
+  `python -m pytest` full suite green (count in the report); live `jarvis doctor` on a scratch
+  state dir — `fs.disk_free` task journaled (3 events / 2 rows), status flipped by hand →
+  `journal chain  : TAMPERED — task:… differs from its last attested write`, exit 1, `--json`
+  `clean: false`; `jarvis tasks`/`status` output unchanged. **Not verified:** CI on the changed
+  tree (`api.github.com` unreachable). No commit or push (none instructed).

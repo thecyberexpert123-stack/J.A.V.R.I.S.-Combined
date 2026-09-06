@@ -1,5 +1,5 @@
 Name:           jarvis-agent
-Version:        1.10.2
+Version:        1.21.0
 Release:        1%{?dist}
 Summary:        JARVIS (Just A Rather Very Intelligent System) — verified automation agent for Linux
 License:        LicenseRef-Proprietary-Until-Owner-Decides
@@ -34,5 +34,7 @@ chmod 755 %{buildroot}/usr/bin/jarvis
 /usr/bin/jarvis
 
 %changelog
+* Sat Sep 06 2026 JARVIS owners <thecyberexpert123-stack@users.noreply.github.com> - 1.21.0-1
+- v1.21.0: task-journal evidence chain (ADR-0028), pass^k eval drivers (ADR-0027)
 * Tue Sep 02 2026 JARVIS owners <thecyberexpert123-stack@users.noreply.github.com> - 1.0.0-1
 - v1.0.0: full milestone series (engine, planner, safety kernel, knowledge, GUI)

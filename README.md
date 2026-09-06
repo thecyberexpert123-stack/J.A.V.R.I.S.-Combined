@@ -4,7 +4,7 @@ One repository holding the two halves of the project side by side:
 
 | Directory | Package | What it is | Version |
 | --- | --- | --- | --- |
-| [`JARVIS-MAIN/J.A.V.R.I.S.-arena-01a06229-j-a-v-r-i-s/`](JARVIS-MAIN/J.A.V.R.I.S.-arena-01a06229-j-a-v-r-i-s/) | `jarvis-agent` (`jarvis`) | The **kernel**: a Linux automation agent with a safety kernel, tiered consent, an audit journal, undo, a cited knowledge base and an MCP surface. Zero runtime dependencies. | 1.20.0 |
+| [`JARVIS-MAIN/J.A.V.R.I.S.-arena-01a06229-j-a-v-r-i-s/`](JARVIS-MAIN/J.A.V.R.I.S.-arena-01a06229-j-a-v-r-i-s/) | `jarvis-agent` (`jarvis`) | The **kernel**: a Linux automation agent with a safety kernel, tiered consent, an audit journal, undo, a cited knowledge base and an MCP surface. Zero runtime dependencies. | 1.21.0 |
 | [`JARVIS-GUI/J.A.V.R.I.S.-GUI-arena-01a0667a-j-a-v-r-i-s-gui/`](JARVIS-GUI/J.A.V.R.I.S.-GUI-arena-01a0667a-j-a-v-r-i-s-gui/) | `javris-gui` (`javris`) | The **HUD**: a Qt 6 / QML heads-up display driven by real `/proc` telemetry, with a console that talks to the kernel over MCP. PySide6-Essentials only. | 0.1.0 |
 
 Each directory is a complete, independently installable project with its own

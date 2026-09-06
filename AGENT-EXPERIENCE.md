@@ -88,3 +88,14 @@ the moment someone iterates in a checkout like this one; (2) the GUI half is
 untouched by C6, and the next item that crosses the seam is C7 (MCP
 `protocolVersion`), which remains an owner question. Working tree still
 uncommitted pending the owner's commit instruction (`TASKS.md` A4 / D3).
+
+## 2026-09-06 · Sequence item C11 (cross-cutting note)
+
+Kernel-only again (journal + `doctor`); the GUI never reads the journal
+directly — it goes through the MCP `journal://tasks` resource, whose payload is
+unchanged — so nothing crosses the seam. The one combined-repo consequence:
+`jarvis doctor` can now exit 1 on a machine where it exited 0, *iff* the journal
+was edited outside jarvis; anyone scripting `doctor` in the GUI's future health
+panel should treat the new `journal_chain` JSON key as part of `clean`. Still
+uncommitted pending the owner's commit instruction (`TASKS.md` A4 / D3).
+

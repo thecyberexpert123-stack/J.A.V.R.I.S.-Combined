@@ -29,7 +29,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blo
 - [x] **A1.** Research II document written, cross-checked against source (56 sources, all cited; provenance labels; VERIFIED-IN-REPO/ASSUMED split).
 - [x] **A2.** Kernel `CHANGELOG.md`, `AGENT-EXPERIENCE.md`, `README.md` index row; root `CHANGELOG.md`/`AGENT-EXPERIENCE.md` updated.
 - [x] **A3.** This task list created and linked from the root README.
-- [!] **A4.** Commit the research + task-list docs to the arena branch and push — **awaiting explicit commit instruction** (§D3: "no merge" confirmed; commit/push not yet explicitly authorized).
+- [x] **A4.** Commit + push authorized 2026-09-06 (§D5): one commit per item on `arena/01a0717a-j-a-v-r-i-s-combined` (`git log` there), never merged.
 
 ## B. Candidate items (order = proposed; final order recorded in §D)
 
@@ -37,7 +37,7 @@ Each block: origin → sub-tasks → acceptance → verification plan → sandbo
 estimate. Version numbers are assigned when an item starts (project convention: one minor bump
 per shipped behaviour change; docs-only ships without a tag).
 
-### B-C6 · `pass^k` reliability in the eval drivers — *pre-approved (D4); no behaviour change* (S) — `[x]` done 2026-09-06 (ADR-0027; uncommitted, see A4)
+### B-C6 · `pass^k` reliability in the eval drivers — *pre-approved (D4); no behaviour change* (S) — `[x]` done 2026-09-06 (ADR-0027; committed per D5 — hash in §A4 log below)
 Origin: research §9 (τ-bench `pass^k`; a 98% target is a `pass^k` target).
 - [x] Inspect `evals/harness/m2_eval.py`, `m3_faults.py`, `m4_grounding.py`, `m5_gui.py`, `m1_eval.annotate`, `providers/breaker.py`, and how `ci.yml` calls them. **Finding:** the fixed `/tmp/jarvis-m2-eval-<id>` state dir let the ADR-0014 breaker accumulate the refusal cases' failures → the 4th local invocation within 300 s failed 6/9 with `BREAKER_OPEN` (reproduced). Precondition for any K ≥ 4; fixed in this item.
 - [x] `--runs K` (default 1) on `m2_eval.py` and `m4_grounding.py`; per-case `passes/runs/runs_detail`, suite `runs` + `pass_hat` curve; existing fields unchanged (field-by-field diff against the pre-change driver). `m1`/`m3`/`m5` excluded with reasons (ADR-0027 D5).
@@ -49,11 +49,18 @@ Origin: research §9 (τ-bench `pass^k`; a 98% target is a `pass^k` target).
 - **Limits:** on scripted/KB-only drivers `pass^k` measures determinism; model reliability needs the weekly Ollama lane (→ C6b). No version bump: harness/tests/docs only (RELEASING precedent).
 - [ ] **C6b (follow-up, owner to schedule):** extend `pass^k` to the real-model lane — `tests/test_fault_injection_live.py` corpus repeated K times under `RUN_LIVE_LLM=1`, and `m4_grounding.py --runs K` on a host with Ollama (the two refusal cases then exercise `knowledge/ai_answer.py`). Needs a workflow edit + an Ollama host; cannot be executed or verified from this sandbox.
 
-### B-C11 · Hash-chained task journal (evidence chain) — *pre-approved (D4); low risk* (S)
+### B-C11 · Hash-chained task journal (evidence chain) — *pre-approved (D4); low risk* (S) — `[x]` done 2026-09-06 (ADR-0028; **1.21.0**; committed per D5)
 Origin: research §3.4 (SAL evidence chain), §3.5 (ACS); precedent `context/store.py` M9c chain.
-- [ ] Inspect `journal/sqlite.py` (schema, every writer), `context/store.py` M9c chain, `safety/integrity.py` + `_cmd_doctor`, all journal callers.
-- [ ] ADR draft; implement; tests (tamper matrix, migration, concurrency); `jarvis doctor` surface; docs.
-- Acceptance: `jarvis doctor` covers the journal; performance measured; old DB opens and reads identically.
+- [x] Inspected `journal/sqlite.py` (schema, every writer, no DELETEs), `context/store.py` M9c chain, `safety/integrity.py` + `_cmd_doctor`, all journal callers (`orchestrator.py`, `gui/service.py`, `brief/engine.py`, `mcp_server.py`), ADR-0008 undo revalidation. **Finding:** a literal M9c copy (digest over current rows) would be *healed* by the next legitimate write on a table written every task — deletions would go unreported. Design changed to an append-only `prev_hash`-linked event chain (ADR-0028 context).
+- [x] ADR-0028 written (D1 event chain in-transaction; D2 concurrency by lock ordering; D3 verify matrix; D4 additive backfill under `BEGIN IMMEDIATE`; D5 `doctor` surface, no new verb; D6 limitation + anchoring left to owner).
+- [x] Implemented: `journal_chain` + `journal_meta` tables (additive), `_append_event`/`_chain_row` linked inside each writer's transaction, `verify_chain()`; `jarvis doctor` text + `--json` + exit 1. `__version__` **not** bumped (belongs to the authorized commit/tag step).
+- [x] Tests `tests/test_journal_chain.py` (+18): edit / delete / forge / tail-event delete / interior-event delete / event edit / head rewrite / wiped chain table; pre-chain migration (schema replica) + downgrade-write detection; no-op writes append nothing; read-API shape pinned; 3 concurrent writer processes; 4 simultaneous first-opens; doctor ok + tampered (text/JSON/exit).
+- [x] Docs: README integrity section + index row; CHANGELOG block; AGENT-EXPERIENCE entry; PLAN R-II row.
+- Acceptance: `jarvis doctor` covers the journal ✔; performance measured ✔ (below); old DB opens and reads identically ✔.
+- **Verified (real runs, 2026-09-06):** full gate `ruff` / `ruff format --check` (186 files) / `mypy src/jarvis` (78 files) / `python -m pytest` **883 passed, 2 skipped**; M3 fault gate 35 vectors / **0 escapes**; M2 `--runs 2` 9/9. Live CLI on a scratch state dir: real `fs.disk_free` task → 3 events / 2 rows; hand-flipped status → `journal chain  : TAMPERED — task:… differs from its last attested write`, exit 1, `--json clean=false`; `jarvis tasks`/`status` unchanged. Mutation checks: D2 invariant broken on purpose → concurrency test fails with `UNIQUE constraint failed: journal_chain.seq` (race, 1 of 3 runs), restored → passes. Timing: 2 000-row legacy backfill 49 ms; 0.99 ms vs 0.79 ms per write; verify 2 600 events in 28 ms; 4 writer processes × 150 tasks → contiguous chain; 6 simultaneous first-opens → exactly one backfill.
+- **Not verified:** GitHub Actions on the changed tree (a re-run of the full suite at the end of the turn showed 2 failures in `tests/test_knowledge_live.py` — `api.github.com` began answering **401** from the sandbox; those tests import nothing this item touched and passed in the 883-run minutes earlier; `-m "not live"` → 874 passed); behaviour on SQLite builds older than this sandbox's 3.40 (`ON CONFLICT … DO UPDATE` needs ≥ 3.24, which the M9c store already relies on).
+- **Limits:** tamper-*evidence*, not prevention (ADR-0028 D6); edits made *before* the upgrade are unknowable and reported as `legacy`. Coverage check: `mark_undone` delegates to `finish_task`, so undo status changes are chained too (verified by reading, 2026-09-06).
+- [ ] **C11b (owner option):** anchor `chain_head` off-machine or in a separate owner-written pin (e.g. `jarvis doctor --pin-journal`) so a consistent rewrite of the whole chain is also detectable. Not started: it makes `doctor` a writer or adds an external dependency — owner call.
 
 ### B-C3 · Doorway survival: `sd_notify` watchdog + `STATUS=` + per-unit hardening — *OWNER-Q* (S–M)
 Origin: research §4.2 (`sd_notify(3)`), §3.7 (systemd hardening); baseline measured 2026-09-06: current doorway unit scores **9.6 UNSAFE** in `systemd-analyze security --offline`.
@@ -148,6 +155,8 @@ Origin: research §3.7; sandbox check 2026-09-06: Landlock ABI 2 present on kern
 | D2 | Execution order | **Proposed order accepted:** C6 → C11 → C3 → C1 → C4 → C2 → C7 → C8 → C10 → C9 → C5. | 2026-09-06 |
 | D3 | Commit/push policy | Owner's words: *"No merge, and all, that is what I wanted to say."* Recorded as: **never merge** (guideline 23 reaffirmed). Whether each finished item may be committed + pushed to the arena branch was not stated explicitly; to be confirmed with the owner when the first item is ready, not assumed. | 2026-09-06 |
 | D4 | Per-item gating | **Pre-approve low-risk, pause on security:** C6, C11, C7-plan, C10 may go ADR → code without a pause; C1, C2, C3, C4, C5, C8, C9 pause at the ADR for acceptance. | 2026-09-06 |
+| D5 | Commit/push (asked again with C6 + C11 ready) | Owner: *"Do the first option, BUT JUST DON'T MERGE."* = **commit + push now, one commit per item, to `arena/01a0717a-j-a-v-r-i-s-combined` only; never merge.** A4 unblocked. | 2026-09-06 |
+| D6 | Kernel version | **Bump 1.20.0 → 1.21.0 now** (C11 is the first runtime change); PKGBUILD/spec synced; `pip install -e .` re-run so `test_package` sees the dist version. | 2026-09-06 |
 
 ## E. Definition of done — per item (guideline 22 self-review)
 

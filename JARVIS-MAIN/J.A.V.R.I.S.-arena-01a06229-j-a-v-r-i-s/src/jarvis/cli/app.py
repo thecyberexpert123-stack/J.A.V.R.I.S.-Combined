@@ -1285,11 +1285,15 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     report = integrity.verify(baseline)
     context_report = ContextStore(default_context_path()).verify_integrity()
     poisoned = not bool(context_report["ok"])
+    # ADR-0028: the task journal's evidence chain is part of the same verdict.
+    chain_report = Journal(default_db_path()).verify_chain()
+    chain_broken = not bool(chain_report["ok"])
+    clean = report.clean and not poisoned and not chain_broken
     if args.json:
         print(
             json.dumps(
                 {
-                    "clean": report.clean and not poisoned,
+                    "clean": clean,
                     "baseline_version": report.baseline_version,
                     "baseline_created_utc": report.created_utc,
                     "entries": len(report.rows),
@@ -1298,16 +1302,23 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
                         for row in report.drift
                     ],
                     "context_store": context_report,
+                    "journal_chain": chain_report,
                 },
                 indent=2,
             )
         )
-        return 0 if report.clean and not poisoned else 1
+        return 0 if clean else 1
     print(
         f"context store  : {'ok' if not poisoned else 'TAMPERED'}"
         f" ({context_report['total']} entries, {context_report['hashed']} hashed,"
         f" {context_report['legacy_unhashed']} legacy)"
         + (f" — {context_report['detail']}" if poisoned else "")
+    )
+    print(
+        f"journal chain  : {'ok' if not chain_broken else 'TAMPERED'}"
+        f" ({chain_report['events']} events over {chain_report['rows']} rows,"
+        f" {chain_report['legacy']} legacy)"
+        + (f" — {chain_report['detail']}" if chain_broken else "")
     )
     try:
         doctor_routing = plan_routing()
@@ -1321,7 +1332,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         )
     except Exception:
         pass
-    if report.clean and not poisoned:
+    if clean:
         print(
             f"integrity: OK — {len(report.rows)} entries match the baseline "
             f"({report.created_utc}, jarvis {report.baseline_version})."
@@ -1330,6 +1341,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     if poisoned:
         print(
             "context store integrity FAILED — see detail above; treat stored feedback as suspect."
+        )
+    if chain_broken:
+        print(
+            "journal evidence chain FAILED — see detail above; the task history was altered"
+            " outside jarvis (or written by a pre-chain version): treat it as suspect."
         )
     if not report.clean:
         print(

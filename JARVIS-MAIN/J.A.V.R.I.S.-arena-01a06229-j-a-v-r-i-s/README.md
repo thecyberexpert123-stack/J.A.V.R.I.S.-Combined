@@ -6,7 +6,7 @@
 >
 > *(Repository keeps its original name `J.A.V.R.I.S.`; the canonical project name is JARVIS per owner ruling, 2026-09-02.)*
 
-**Status: `v1.20.0` — M0–M11 complete + the 2026 deep-research roadmap fully landed
+**Status: `v1.21.0` — M0–M11 complete + the 2026 deep-research roadmap fully landed
 (voice ADR-0019 · memory ADR-0020 · briefings ADR-0021 · guarded desktop awareness ADR-0022 ·
 intent retrain ADR-0023 · synthesis digest ADR-0024) + the hybrid AI upgrade (ADR-0025) + the
 unknown-app answer (ADR-0026)**: deterministic engine + a dual-path (local/API) LLM planner
@@ -27,7 +27,7 @@ Plan accepted 2026-09-02; open decisions recorded in [`docs/PLAN.md` §13](docs/
 | Research & evidence | [`docs/RESEARCH.md`](docs/RESEARCH.md) |
 | 2026 deep research & roadmap | [`docs/RESEARCH-jarvis-agent-linux-2026.md`](docs/RESEARCH-jarvis-agent-linux-2026.md) |
 | 2026 deep research II — agent construction & future tech | [`docs/RESEARCH-agent-construction-and-future-tech-2026.md`](docs/RESEARCH-agent-construction-and-future-tech-2026.md) |
-| Follow-through sequence for research II (owner-gated; C6 `pass^k` shipped as ADR-0027) | [`../../TASKS.md`](../../TASKS.md) · [`docs/adr/0027-passk-eval-reliability.md`](docs/adr/0027-passk-eval-reliability.md) |
+| Follow-through sequence for research II (owner-gated; C6 `pass^k` = ADR-0027, C11 journal evidence chain = ADR-0028) | [`../../TASKS.md`](../../TASKS.md) · [`docs/adr/0027-passk-eval-reliability.md`](docs/adr/0027-passk-eval-reliability.md) · [`docs/adr/0028-journal-evidence-chain.md`](docs/adr/0028-journal-evidence-chain.md) |
 | Change log | [`CHANGELOG.md`](CHANGELOG.md) |
 | Development experience log | [`AGENT-EXPERIENCE.md`](AGENT-EXPERIENCE.md) |
 
@@ -304,7 +304,7 @@ $ jarvis doctor                    # verify: 0 clean · 1 drift · 2 no baseline
 $ jarvis doctor --canaries         # trace suggestion-canary leak paths
 ```
 
-`jarvis status` shows a live integrity line. Stored feedback is write-time-scanned for injection patterns and hash-chained; `jarvis doctor` reports tampering with it. Honest limitation: a tripwire against invisible, gradual modification — not a cryptographic anchor.
+`jarvis status` shows a live integrity line. Stored feedback is write-time-scanned for injection patterns and hash-chained; `jarvis doctor` reports tampering with it. The **task journal** is an evidence chain (ADR-0028): every write links a hash of the row to the previous event inside the same transaction, so a status flipped by hand, a deleted step or a forged task shows up as `journal chain  : TAMPERED — …` and `doctor` exits 1; journals from before 1.21 are absorbed once on first open (reported as `legacy`). Honest limitation: a tripwire against invisible, gradual modification — not a cryptographic anchor.
 
 ## Charters (ADR-0013 M9d)
 
@@ -376,7 +376,7 @@ M0–M11 complete through v1.11.0; then the 2026 deep research (45 sources) prod
 charter-compliant roadmap whose items are now all landed — voice (v1.13.0), file memory
 (v1.14.0), scheduled briefings (v1.15.0), guarded desktop awareness (v1.16.0), full-vocabulary
 intent retrain (v1.17.0), synthesis digest (v1.18.0), the hybrid AI upgrade (v1.19.0), and
-the unknown-app answer with owner-taught app packs (v1.20.0). Milestone history and
+the unknown-app answer with owner-taught app packs (v1.20.0); the journal evidence chain (v1.21.0, ADR-0028). Milestone history and
 acceptance criteria: [`docs/PLAN.md` §7](docs/PLAN.md). Review candidates `v1.0.0-rc1` …
 `v1.20.0-rc1` (24 drafts) await the owner's publishing decisions; nothing is merged and
 `main` is untouched — the owner merge policy is absolute.

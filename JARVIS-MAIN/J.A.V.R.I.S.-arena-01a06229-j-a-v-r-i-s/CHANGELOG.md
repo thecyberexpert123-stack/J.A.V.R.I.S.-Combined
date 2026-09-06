@@ -31,6 +31,8 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-09-06 — the journal evidence chain (ADR-0028) + `pass^k` eval reliability (ADR-0027) + combined-tree audit
+
 ### Fixed — combined-repository audit (2026-09-06, docs and file modes only; no code change)
 - **README playbook count.** Three sentences still said 57 playbooks after ADR-0026 took the
   catalog to 58 (line 15 already said 58). Corrected to the numbers the code pins:
@@ -58,6 +60,40 @@ below each entry were corrected in place.
   classifier fixtures. Notably, only the approval-policy refusal carries the
   `"allow": true` hint (`mcp_server._REFUSAL_HINT`), which is what lets a front end tell a
   consent decision apart from an unconditional refusal.
+
+### Added — task-journal evidence chain (2026-09-06, ADR-0028)
+- **Every journal write is now hash-linked.** `journal/sqlite.py` appends one event to a new
+  `journal_chain` table *inside the same transaction* as each row write (`begin_task`,
+  `finish_task`/`mark_undone`, `record_step`, `store_undo`, `mark_undo_applied`, `set_meta`,
+  `record_unknown_request`): SHA-256 of the row as it now stands, linked to the previous event's
+  hash; `journal_meta.chain_head` tracks the tail. Extends M9c (ADR-0013), which chained the
+  context store but left the record of *what was executed* unhashed — the gap named by the SAL
+  evidence-chain pattern (arXiv:2604.22136) in research II §3.4.
+- **`Journal.verify_chain()`** re-derives the chain and compares every row with its latest
+  attested hash; reports (never raises) edited rows, deleted rows, forged rows (*unchained*),
+  deleted events (tail *and* interior — `AUTOINCREMENT` never reuses a `seq`, so a wipe cannot be
+  healed by later writes), edited events and a rewritten head. Same dict shape as the context
+  store's `verify_integrity()`.
+- **`jarvis doctor`** prints a `journal chain  : ok (N events over R rows, L legacy)` line,
+  includes `"journal_chain"` in `--json`, and **returns 1** when the chain fails — the same code
+  it already uses for baseline drift and context-store tampering. *Behaviour change to note:* a
+  machine whose journal was edited outside jarvis now fails `doctor` where it used to pass.
+- **Additive migration.** Pre-chain journals get one `legacy` event per existing row on first
+  open under `BEGIN IMMEDIATE` (exactly one backfill even when several processes open the file at
+  once — tested); no existing column changes; `get_task`/`steps_for_task`/`recent_tasks`/
+  `get_undo`/`get_meta` return the same dicts as before (pinned by test). Rows written by an
+  older jarvis after the upgrade are reported as unchained with both explanations.
+- **Tests (`tests/test_journal_chain.py`, +18):** the tamper matrix above, the pre-chain
+  migration (schema replica of the 1.20 layout), no-op writes append nothing, three concurrent
+  writer processes → one contiguous chain, four simultaneous first-opens → one backfill, and the
+  doctor surface (text + JSON, exit 0/1). The concurrency test was shown to fail
+  (`UNIQUE constraint failed: journal_chain.seq`) when the D2 ordering invariant is broken on
+  purpose, then pass again with it restored.
+- **Measured (this sandbox, SQLite 3.40):** backfill of a 2 000-row pre-chain journal 49 ms;
+  chained writes 0.99 ms vs 0.79 ms unchained (+0.2 ms per write); `verify_chain()` over 2 600
+  events / 2 400 rows 28 ms. Honest limitation unchanged from M9c: arbitrary write access can
+  recompute the chain; it makes tampering visible, not impossible (off-machine anchoring is an
+  owner option, `TASKS.md` C11b).
 
 ### Added — `pass^k` reliability in the eval drivers (2026-09-06, ADR-0027; harness + tests only, no runtime change)
 - **`--runs K` on `evals/harness/m2_eval.py` and `m4_grounding.py`** (default `1`). Every

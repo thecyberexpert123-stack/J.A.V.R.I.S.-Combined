@@ -2,7 +2,7 @@
 # AUR package: builds from the GitHub v-tag (ADR-0011).
 # License note: upstream LICENSE decision is pending; do not redistribute widely until set.
 pkgname=jarvis-agent
-pkgver=1.10.2
+pkgver=1.21.0
 pkgrel=1
 pkgdesc="JARVIS (Just A Rather Very Intelligent System) — verified automation agent for Linux"
 arch=(any)
