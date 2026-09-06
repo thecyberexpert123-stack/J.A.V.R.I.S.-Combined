@@ -102,3 +102,39 @@ def test_overlong_input_is_rejected_outright(router: CommandRouter) -> None:
 def test_dispatch_never_raises(router: CommandRouter) -> None:
     for line in ("", "?", "mode", "mode x y z", "\x00\x01", "help extra args"):
         assert router.dispatch(line) is not None
+
+
+# -- agent verbs -------------------------------------------------------------
+
+
+def test_agent_connect_is_a_verb(router: CommandRouter) -> None:
+    # Connecting used to be reachable only through a slot nothing called, so
+    # the console's own help promised agent verbs that could never work.
+    result = router.dispatch("agent connect")
+    assert result.severity is Severity.INFO
+    assert result.agent_connect is True
+    # Connecting is a pure connection act: no tool call rides along with it.
+    assert result.agent_tool is None
+    assert result.agent_disconnect is False
+
+
+def test_agent_connect_is_case_insensitive(router: CommandRouter) -> None:
+    assert router.dispatch("agent CONNECT").agent_connect is True
+
+
+def test_agent_status_and_disconnect_are_unchanged(router: CommandRouter) -> None:
+    status = router.dispatch("agent status")
+    assert status.agent_tool == "jarvis_status"
+    assert status.agent_connect is False
+    gone = router.dispatch("agent disconnect")
+    assert gone.agent_disconnect is True
+    assert gone.agent_connect is False
+
+
+def test_agent_usage_names_every_action(router: CommandRouter) -> None:
+    for line in ("agent", "agent teleport"):
+        message = router.dispatch(line).message
+        for action in ("connect", "status", "disconnect"):
+            assert action in message, f"{line!r} usage omits {action!r}"
+    assert router.dispatch("agent teleport").severity is Severity.ERROR
+    assert router.dispatch("agent teleport").agent_connect is False

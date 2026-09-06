@@ -31,6 +31,34 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
+### Fixed — combined-repository audit (2026-09-06, docs and file modes only; no code change)
+- **README playbook count.** Three sentences still said 57 playbooks after ADR-0026 took the
+  catalog to 58 (line 15 already said 58). Corrected to the numbers the code pins:
+  `jarvis playbooks` lists **58**; the planner's hint vocabulary and the classifier's label
+  set cover **57** because `gui.app` is owner-taught and carries no static hint or label
+  (ADR-0026 D5). Verified against `len(PLAYBOOKS)`, `len(INTENT_HINTS)` and
+  `load_model().labels` in the shipped package rather than against the earlier text.
+- **Executable bits restored** on `packaging/deb/build-deb.sh` and
+  `evals/harness/install_test.sh` (`100755` upstream, `100644` after the combined import).
+  `packaging.yml` and `release.yml` execute `build-deb.sh` directly, so the lost bit would
+  have broken both workflows on this tree. Confirmed by comparing local blob modes against
+  the upstream tree listing.
+
+### Verified — combined-repository audit
+- Full gate in a fresh venv (Python 3.11, zero runtime deps, dev extras only): `ruff check`
+  clean, `ruff format --check` clean (180 files), `mypy src/jarvis` clean (78 files),
+  **856 passed, 2 skipped** (both live-LLM gates). M2 playbook eval 9/9; M3 fault-injection
+  35 vectors / 0 escapes; M4 grounding 10/12 — the two misses are the upstream GitHub-doc
+  checks, which cannot reach `api.github.com` from the audit sandbox (HTTP 401 regardless
+  of token; `raw.githubusercontent.com` unreachable). Environment limit, not a regression.
+- The MCP surface served to the GUI was re-captured live (`jarvis mcp serve`, 1.20.0):
+  `initialize` echoes `2025-03-26`; the six-tool list matches the GUI's `KNOWN_TOOLS`; the
+  approval-policy refusal, cautious-mode refusal, protected-path refusal, refusal-to-guess
+  and cite-or-abstain `explain` payloads were captured verbatim and now serve as the GUI's
+  classifier fixtures. Notably, only the approval-policy refusal carries the
+  `"allow": true` hint (`mcp_server._REFUSAL_HINT`), which is what lets a front end tell a
+  consent decision apart from an unconditional refusal.
+
 ### Added
 - **Documentation sweep** (owner-directed, docs-only — ships without a tag per the docs-only
   convention): README repaired (a pre-existing mid-sentence paragraph split around the

@@ -527,7 +527,9 @@ Item {
         id: footer
         anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
         anchors.margins: Theme.spaceLg
-        height: 168
+        // 168 was the console's height before the agent link row existed;
+        // the row's own height is added so the log keeps every visible line.
+        height: 168 + agentLink.height + Theme.spaceSm
         title: "Console"
         status: "TAB: cycle mode"
 
@@ -558,10 +560,24 @@ Item {
             anchors.fill: parent
             spacing: Theme.spaceSm
 
+            // The agent link sits with the console because the console is
+            // where the agent is addressed. It is the pointer-side of an
+            // explicit opt-in; `agent connect` is the keyboard side.
+            AgentLink {
+                id: agentLink
+                anchors.right: parent.right
+                connected: hudSurface.controller.agentConnected
+                available: hudSurface.controller.agentAvailable
+                version: hudSurface.controller.agentVersion
+                transport: hudSurface.controller.agentTransport
+                onConnectRequested: hudSurface.controller.connectAgent()
+                onDisconnectRequested: hudSurface.controller.submitCommand("agent disconnect")
+            }
+
             LogStream {
                 id: logView
                 width: parent.width
-                height: parent.height - inputRow.height - Theme.spaceSm
+                height: parent.height - inputRow.height - agentLink.height - Theme.spaceSm * 2
                 lines: hudSurface.controller.log
             }
 

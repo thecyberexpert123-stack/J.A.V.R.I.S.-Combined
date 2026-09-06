@@ -38,12 +38,42 @@ Module {
         Property { name: "alertAdvice"; type: "QString"; read: "alertAdvice"; index: 22; isReadonly: true; notify: "alertChanged" }
         Property { name: "alertSeverity"; type: "QString"; read: "alertSeverity"; index: 23; isReadonly: true; notify: "alertChanged" }
         Property { name: "alertFraction"; type: "double"; read: "alertFraction"; index: 24; isReadonly: true; notify: "alertChanged" }
+        Property { name: "batteryPresent"; type: "bool"; read: "batteryPresent"; index: 25; isReadonly: true; notify: "snapshotChanged" }
+        Property { name: "batteryFraction"; type: "double"; read: "batteryFraction"; index: 26; isReadonly: true; notify: "snapshotChanged" }
+        Property { name: "batteryText"; type: "QString"; read: "batteryText"; index: 27; isReadonly: true; notify: "snapshotChanged" }
+        Property { name: "batteryState"; type: "QString"; read: "batteryState"; index: 28; isReadonly: true; notify: "snapshotChanged" }
+        Property { name: "batteryRuntimeText"; type: "QString"; read: "batteryRuntimeText"; index: 29; isReadonly: true; notify: "snapshotChanged" }
+        Property { name: "hostFacts"; type: "QVariantList"; read: "hostFacts"; index: 30; isReadonly: true; isConstant: true }
+        Property { name: "agentConnected"; type: "bool"; read: "agentConnected"; index: 31; isReadonly: true; notify: "agentChanged" }
+        Property { name: "agentVersion"; type: "QString"; read: "agentVersion"; index: 32; isReadonly: true; notify: "agentChanged" }
+        Property { name: "agentAvailable"; type: "bool"; read: "agentAvailable"; index: 33; isReadonly: true; notify: "agentChanged" }
+        Property { name: "residentAvailable"; type: "bool"; read: "residentAvailable"; index: 34; isReadonly: true; notify: "agentChanged" }
+        Property { name: "agentTransport"; type: "QString"; read: "agentTransport"; index: 35; isReadonly: true; notify: "agentChanged" }
+        Property { name: "pendingConsent"; type: "QString"; read: "pendingConsent"; index: 36; isReadonly: true; notify: "consentChanged" }
+        Property { name: "consentGate"; type: "QString"; read: "consentGate"; index: 37; isReadonly: true; notify: "consentChanged" }
+        Property { name: "consentHeadline"; type: "QString"; read: "consentHeadline"; index: 38; isReadonly: true; notify: "consentChanged" }
+        Property { name: "consentHint"; type: "QString"; read: "consentHint"; index: 39; isReadonly: true; notify: "consentChanged" }
+        Property { name: "confirmPolicy"; type: "QString"; read: "confirmPolicy"; index: 40; isReadonly: true; notify: "consentChanged" }
+        Property { name: "planAvailable"; type: "bool"; read: "planAvailable"; index: 41; isReadonly: true; notify: "planChanged" }
+        Property { name: "planPlaybook"; type: "QString"; read: "planPlaybook"; index: 42; isReadonly: true; notify: "planChanged" }
+        Property { name: "planTier"; type: "int"; read: "planTier"; index: 43; isReadonly: true; notify: "planChanged" }
+        Property { name: "planIrreversible"; type: "bool"; read: "planIrreversible"; index: 44; isReadonly: true; notify: "planChanged" }
+        Property { name: "planUndoReason"; type: "QString"; read: "planUndoReason"; index: 45; isReadonly: true; notify: "planChanged" }
+        Property { name: "planSteps"; type: "QVariantList"; read: "planSteps"; index: 46; isReadonly: true; notify: "planChanged" }
+        Property { name: "planBlast"; type: "QVariantList"; read: "planBlast"; index: 47; isReadonly: true; notify: "planChanged" }
+        Property { name: "voiceAvailable"; type: "bool"; read: "voiceAvailable"; index: 48; isReadonly: true; notify: "voiceChanged" }
+        Property { name: "voiceStatus"; type: "QString"; read: "voiceStatus"; index: 49; isReadonly: true; notify: "voiceChanged" }
+        Property { name: "dictation"; type: "QString"; read: "dictation"; index: 50; isReadonly: true; notify: "voiceChanged" }
         Signal { name: "stateChanged" }
         Signal { name: "modeChanged" }
         Signal { name: "snapshotChanged" }
         Signal { name: "logChanged" }
         Signal { name: "alertChanged" }
         Signal { name: "shutdownRequested" }
+        Signal { name: "agentChanged" }
+        Signal { name: "consentChanged" }
+        Signal { name: "voiceChanged" }
+        Signal { name: "planChanged" }
         Method { name: "start"; type: "void" }
         Method { name: "stop"; type: "void" }
         Method { name: "requestState"; type: "bool"
@@ -53,5 +83,13 @@ Module {
             Parameter { name: ""; type: "QString" }
         }
         Method { name: "cycleMode"; type: "void" }
+        Method { name: "setConfirmPolicy"; type: "bool"
+            Parameter { name: ""; type: "QString" }
+        }
+        Method { name: "startDictation"; type: "void" }
+        Method { name: "cancelDictation"; type: "void" }
+        Method { name: "connectAgent"; type: "void" }
+        Method { name: "approveConsent"; type: "void" }
+        Method { name: "declineConsent"; type: "void" }
     }
 }

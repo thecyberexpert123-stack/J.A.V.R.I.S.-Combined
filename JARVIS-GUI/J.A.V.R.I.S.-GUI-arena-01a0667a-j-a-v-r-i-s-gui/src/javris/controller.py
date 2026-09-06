@@ -37,6 +37,19 @@ MAX_LOG_LINES = 200
 
 _MODES = ("DIAGNOSTICS", "MONITOR", "ASSISTANT")
 
+
+def _is_abstention(outcome: Outcome) -> bool:
+    """Whether a failed ``jarvis_explain`` is the kernel abstaining.
+
+    ``jarvis_explain`` is cite-or-abstain (kernel ADR-0009): a question with no
+    cited fact comes back ``isError: true`` with ``status: "refused"`` at the
+    top level of the payload -- the same flag a transport fault would carry.
+    The refusal is the kernel working correctly and must not be rendered as a
+    fault. Verified against kernel 1.20.0.
+    """
+    return str(outcome.payload.get("status") or "").lower() == "refused"
+
+
 #: Which metrics each mode already presents as a large, central element.
 #:
 #: This table is the documented proxy for gaze direction used by
@@ -370,6 +383,8 @@ class HudController(QObject):
             self._set_mode(result.mode)
         if result.confirm_policy:
             self.setConfirmPolicy(result.confirm_policy)
+        if result.agent_connect:
+            self.connectAgent()
         if result.agent_disconnect:
             self._disconnect_agent()
         if result.agent_tool is not None:
@@ -893,6 +908,7 @@ class HudController(QObject):
             self.append_log(Severity.INFO, "Starting the JARVIS kernel on demand...")
 
         self.agentChanged.emit()
+        self._acknowledge_fault()
         self._request_state_quietly(AssistantState.PROCESSING)
         if not self._transport.start():
             self._request_state_quietly(AssistantState.OFFLINE)
@@ -919,6 +935,13 @@ class HudController(QObject):
         gate = pending.gate
         self._confirm = None
         self.consentChanged.emit()
+
+        # The answer is itself a request in flight: STANDBY -> PROCESSING ->
+        # EXECUTING, the same path a typed command takes. Going straight to
+        # EXECUTING is not in the table, and skipping it silently would leave
+        # the header reading STANDBY while a system-level action runs.
+        self._acknowledge_fault()
+        self._request_state_quietly(AssistantState.PROCESSING)
 
         if gate is Gate.KERNEL_CONSENT:
             self.append_log(Severity.WARN, f"Consent given. Executing: {request}")
@@ -955,16 +978,20 @@ class HudController(QObject):
         if not self._transport.ready:
             self.append_log(
                 Severity.ERROR,
-                "The agent is not connected. Use the connect action first.",
+                "The agent is not connected. Type 'agent connect' or use the LINK control.",
             )
             return
 
+        self._acknowledge_fault()
         self._request_state_quietly(AssistantState.PROCESSING)
         if tool == "jarvis_do":
             # Gate 2: preview first so the kernel can tell us whether this can
             # be undone. The preview is read-only and changes nothing.
             if self._confirm_policy is ConfirmPolicy.KERNEL_ONLY:
                 self._last_do_request = argument
+                # Same state the previewed path reaches before it sends: the
+                # kernel has been asked to act, whatever it then decides.
+                self._request_state_quietly(AssistantState.EXECUTING)
                 self._transport.execute(argument, allow=False, tag="do")
                 return
             self._staged_request = argument
@@ -1026,6 +1053,18 @@ class HudController(QObject):
             self._resolve_staged_request(outcome)
             return
 
+        if tag == "preview" and self._last_plan is not None and self._last_plan.unmatched:
+            # A bare `plan` verb the kernel declined to plan: it will not
+            # guess, or the target is protected, and it said which. The
+            # preview payload nests that sentence under ``preview`` rather
+            # than ``outcome``, so without this branch it fell through to a
+            # generic "Request failed." and an ERROR state -- the kernel's
+            # correct behaviour presented as a fault. Same report as the
+            # staged path, so both routes read alike.
+            self._report_unmatched(self._last_plan.error, self._last_plan.hint)
+            self._request_state_quietly(AssistantState.STANDBY)
+            return
+
         if outcome.kind is OutcomeKind.UNMATCHED:
             # No consent prompt: there is no action to authorise. Reported the
             # same way whether or not a preview happened to run first.
@@ -1054,7 +1093,21 @@ class HudController(QObject):
             self._request_state_quietly(AssistantState.STANDBY)
             return
 
-        if outcome.kind in (OutcomeKind.FAILED, OutcomeKind.PROTOCOL_ERROR):
+        if outcome.kind is OutcomeKind.PROTOCOL_ERROR:
+            self.append_log(Severity.ERROR, outcome.text)
+            self._request_state_quietly(AssistantState.ERROR)
+            return
+
+        if outcome.kind is OutcomeKind.FAILED:
+            if tag == "explain" and _is_abstention(outcome):
+                # Cite-or-abstain: the kernel has no cited fact for the
+                # question and says so. That is its honest answer, delivered
+                # in its own words -- not a malfunction of the transport, so
+                # the HUD speaks it and stands by rather than faulting.
+                self._request_state_quietly(AssistantState.SPEAKING)
+                self.append_log(Severity.WARN, outcome.text)
+                self._request_state_quietly(AssistantState.STANDBY)
+                return
             self.append_log(Severity.ERROR, outcome.text)
             self._request_state_quietly(AssistantState.ERROR)
             return
@@ -1120,6 +1173,18 @@ class HudController(QObject):
         self._last_do_request = request
         self._request_state_quietly(AssistantState.EXECUTING)
         self._transport.execute(request, allow=False, tag="do")
+
+    def _acknowledge_fault(self) -> None:
+        """Clear an ERROR state on the owner's next explicit request.
+
+        The table forbids ERROR -> PROCESSING on purpose: a fault must be
+        acknowledged before work resumes. The owner typing a new command *is*
+        that acknowledgement -- they have read the fault line and moved on --
+        so it is recorded as one (ERROR -> STANDBY) rather than left to block
+        every later state change silently.
+        """
+        if self._state is AssistantState.ERROR:
+            self.set_state(AssistantState.STANDBY)
 
     def _request_state_quietly(self, target: AssistantState) -> None:
         """Move to ``target`` when the transition table permits it.

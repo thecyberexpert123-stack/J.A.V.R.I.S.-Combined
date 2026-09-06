@@ -239,3 +239,39 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
 - **The bug the wizard's own smoke run caught:** a pack with no `app.launch` block was normalized into `{"launch": []}` at install — which then **failed the pack's own validation on reload**, making every no-launch pack unloadable (fail-closed against myself). Fixed by omitting the key when empty; the round-trip test now pins it. Second catch in the same area: absolute-path *arguments* (`gedit /home/owner/notes.txt`) were rejected by a token regex written for command names — the fix splits first token (bare command, PATH lookup) from arguments (no shell metacharacters), which is the actual security boundary.
 - **Real-pyatspi shape discipline:** duck-typed stubs that implement `__iter__` silently pass while the real Accessible binding exposes children **only by index** (`get_child_count`/`get_child_at_index`). The walker now speaks the index protocol first and iterables as fallback, and one test runs the index-protocol shape end to end. The desktop itself is an Accessible — the same fix applies at the root.
 - **Exemption bookkeeping at scale:** growing the catalog 57 → 58 rippled into five pinned artifacts (registry count, tier table, CLI JSON count, hint catalog, classifier vocabulary). The D5 decision — *owner-taught playbooks carry no static hint and no classifier label, because they have no static matcher surface to template* — had to be encoded once (`OWNER_TAUGHT` in the trainer) and referenced everywhere, or the next catalog growth re-fights this battle.
+
+---
+
+## 2026-09-06 · Combined-repository audit — the kernel as a front end sees it
+
+- **The exercise:** the kernel and the JAVRIS HUD were imported side by side into one
+  repository, and the brief was to test the whole and strengthen it. For the kernel that
+  meant running every gate in a clean venv (856 passed, 2 honest skips; M2 9/9; M3 0 escapes;
+  M4 10/12 with the two GitHub-reachability misses disclosed as environment) and then
+  something the kernel's own suite cannot do: sit on the *other* side of `jarvis mcp serve`
+  and read what a front end actually receives.
+- **What the front end sees that the tier does not say.** Four different guards answer a
+  `jarvis_do` with `status: "refused"` and a tier below 3: the approval policy, cautious
+  mode, the protected-path check and the refusal-to-guess. Only the first is lifted by
+  `allow: true`; I proved the second by sending the T2 request *with* consent under
+  cautious mode and receiving the identical sentence. The GUI had been keying its APPROVE
+  button on the tier alone, so it offered consent for refusals consent cannot lift. The
+  kernel was never wrong — but the one signal that disambiguates the cases is the
+  `_REFUSAL_HINT` that `_tool_do` attaches *only* for the approval case, and that
+  provenance is worth knowing when designing any other client. Recorded in the GUI's
+  bridge doc with the four sentences verbatim.
+- **A count that drifted in prose but not in code.** The README said 57 playbooks in three
+  places and 58 in one. The code pins both numbers for different things — 58 in the
+  catalog, 57 in the hint vocabulary and classifier labels because `gui.app` is
+  owner-taught (D5) — so the honest fix was not a find-and-replace but saying which number
+  is which. The D5 bookkeeping lesson from v1.20.0 applies to documentation too: an
+  exemption encoded once in code still has to be stated once in prose, or the next reader
+  "corrects" the wrong number.
+- **File modes are part of the release contract.** The import dropped the executable bit
+  on `build-deb.sh`, which `packaging.yml` and `release.yml` exec directly. Nothing in the
+  test suite touches a file's mode, so the only way to see it was to diff blob modes
+  against the upstream tree. Restored with `git update-index --chmod=+x`; a docs-only,
+  code-untouched change, and disclosed as such.
+- **What I did not do:** no kernel code changed in this round, no tag, no merge. The GUI's
+  findings did not surface a kernel defect to fix; they surfaced the fact that the kernel's
+  refusal vocabulary is richer than its tier field, which a client must respect.

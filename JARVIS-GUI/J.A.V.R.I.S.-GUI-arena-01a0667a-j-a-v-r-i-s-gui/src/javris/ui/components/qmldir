@@ -19,3 +19,4 @@ TaperedArc 1.0 TaperedArc.qml
 ConsentPrompt 1.0 ConsentPrompt.qml
 ConsentButton 1.0 ConsentButton.qml
 MicButton 1.0 MicButton.qml
+AgentLink 1.0 AgentLink.qml

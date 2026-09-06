@@ -676,3 +676,95 @@ Two rounds running, the serious bug has been in a path the gates cannot reach
 and only adversarial live driving exposed. I have stopped treating a green
 check run as evidence that a security-relevant flow is correct; it is evidence
 that the flows I thought to write down are correct.
+
+## Round 10 — auditing the combined repository (2026-09-06)
+
+The GUI and the kernel were imported side by side into one repository with a
+single commit and no root-level docs. The brief was "test this project and make
+it stronger", so the first day was spent running everything rather than
+changing anything: both quality gates end to end, the kernel's eval harnesses,
+and then the GUI's protocol layer against a real `jarvis mcp serve`. All green.
+That is where the previous nine rounds would have stopped, and it is exactly
+the wrong place to stop.
+
+**The green suite was hiding an unreachable feature.** `connectAgent()` had a
+docstring, a slot decorator and passing tests. It also had zero callers.
+`grep -rn connectAgent src tests` found the definition and nothing else — no
+console verb, no button, no QML binding — and the commit history confirmed it
+had been that way since the bridge landed. The console's own `help` listed the
+agent verbs, and every one of them answered *"Use the connect action first"*,
+naming an action that did not exist. Unit tests cannot catch this class of
+defect: they call the method directly, which is precisely what the product
+never did. It took a test that started from the user's side — type what `help`
+says to type — to expose it. The fix is small (a verb, a control, one slot) and
+was approved by the owner as both rather than either, because the keyboard and
+pointer paths serve different people.
+
+**The state machine had dead ends that only sequences revealed.** I wrote
+probes that drove the real controller with a stub transport and printed the
+state after each step. Six ordinary sequences ended in `PROCESSING` with
+nothing in flight: a consent refusal under `confirm kernel-only`, a declined
+prompt, the connect handshake itself, a disconnect mid-request, a returned
+dictation, and a retry after a failed connect (which additionally sat in
+`OFFLINE` while `agentConnected` read `True`). Each one was a single missing
+edge — `PROCESSING -> STANDBY` — that `_request_state_quietly` skipped without
+a word, by design. The design was right (the bridge should not spam the console
+about the state table) but it made the failure invisible: nothing raised,
+nothing logged, the header just stayed wrong. The owner chose the minimal
+table change over a redesign, and I added a flow test file whose assertions are
+state *traces*, not end states, because the intermediate `SPEAKING` mattered as
+much as the final `STANDBY`.
+
+**Not every refusal is a consent decision.** This was the finding that
+justified the round. The classifier offered APPROVE for every refusal below
+tier 3. I ran the kernel with cautious mode on and sent a T2 request with
+`allow: true`: refused, identically, with `hint: ""`. Then `delete
+/etc/passwd`: refused at tier 0 by the protected-path guard. Both would have
+rendered as *"this action needs your explicit consent"* with a button whose
+only effect was to re-send the request and receive the same answer. Approving
+was harmless — the kernel is unconditional about these — but the button
+misstated what the owner could authorise, in the one dialog that exists to be
+precise about authority. The fix keys consent on what the kernel *said*: its
+approval sentence, or the `"allow": true` hint that `mcp_server._tool_do`
+attaches only in that case. I read the kernel source to confirm the hint's
+provenance rather than inferring it from one capture, then captured the
+sentences verbatim for the fixtures.
+
+**My first fixtures were wrong, and the live run caught it.** I wrote the
+cautious-mode text from memory of an earlier probe as *"Run 'jarvis config set
+cautious false'"*. There is no `jarvis config` command; the real sentence ends
+*"turn the guard off: jarvis cautious off"*. The unit tests passed against my
+invented string. The end-to-end probe — which invokes the actual CLI — failed
+on `jarvis config`, and that failure is the only reason the committed fixtures
+now match the kernel byte for byte. A fixture that is not a capture is a
+fiction with a green tick next to it.
+
+**Two things I got wrong before reading.** I assumed `install htop` would be
+tier 2 (it is tier 1: `pkg.install` is user-level under this kernel's tiers;
+`pkg.upgrade` is the T2). And I asserted `explain` where the console verb is
+`ask`. Both were caught by tests that failed, which is what tests are for; I
+mention them because each was a guess about an interface I had already
+inspected, and the inspection did not stick until a failure forced it.
+
+**The qmltypes drift.** The committed type description was missing 38 members.
+Nothing failed because nothing compared it to the object it described; qmllint
+simply did not know those bindings existed and therefore could not check them.
+Regenerating it is one command. The durable fix is the test that diffs the
+committed file against `render()` from the live meta-object — proven by
+checking out the stale file and watching it fail.
+
+**What I did not verify.** The resident HTTP transport was not re-driven live
+this round; it shares the classifier and its unit tests now use the kernel's
+real approval text, but the doorway itself was not started. `do show uptime`
+failing with `exit code 100` is the sandbox's missing package index, not a GUI
+defect, and I have said so in the bridge doc rather than leaving a reader to
+wonder. GitHub's contents API is blocked from this sandbox, so the kernel's two
+upstream-doc grounding checks could not be exercised here; that is an
+environment limit and is recorded as one.
+
+**The pattern across ten rounds.** Every serious defect — the cached plan shown
+against the wrong request (round 9), the unreachable connect, the silent
+dead-end states, the over-eager consent button — lived in a *relationship*
+between components, and every one was found by driving the real object through
+a sequence a user would actually perform. The gates verify the parts. Only a
+walk through the product verifies the product.

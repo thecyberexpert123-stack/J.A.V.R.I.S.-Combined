@@ -42,6 +42,10 @@ class CommandResult:
     agent_tool: str | None = None
     #: Free-text argument for :attr:`agent_tool`.
     agent_argument: str = ""
+    #: True when the verb asks to open the agent connection. Connecting is
+    #: an explicit owner act (the HUD never starts the kernel on its own), and
+    #: this flag is how the console expresses that act.
+    agent_connect: bool = False
     #: True when the verb asks to close the agent connection.
     agent_disconnect: bool = False
     #: New GUI-side confirmation policy, when the command changes it. This
@@ -102,7 +106,7 @@ class CommandRouter:
             ),
             CommandSpec(
                 "agent",
-                "Agent connection: agent status | agent disconnect.",
+                "Agent connection: agent connect | status | disconnect.",
                 CommandRouter._cmd_agent,
             ),
             CommandSpec(
@@ -261,8 +265,16 @@ class CommandRouter:
 
     def _cmd_agent(self, args: tuple[str, ...]) -> CommandResult:
         if not args:
-            return CommandResult(Severity.WARN, "Usage: agent status | agent disconnect")
+            return CommandResult(Severity.WARN, "Usage: agent connect | status | disconnect")
         action = args[0].lower()
+        if action == "connect":
+            # Opens the connection and nothing more: no tool call rides along,
+            # so connecting can never be the same gesture as asking for work.
+            return CommandResult(
+                Severity.INFO,
+                "Connecting to the agent.",
+                agent_connect=True,
+            )
         if action == "status":
             return CommandResult(
                 Severity.INFO,
@@ -277,5 +289,5 @@ class CommandRouter:
             )
         return CommandResult(
             Severity.ERROR,
-            f"Unknown agent action '{args[0]}'. Use: status | disconnect.",
+            f"Unknown agent action '{args[0]}'. Use: connect | status | disconnect.",
         )

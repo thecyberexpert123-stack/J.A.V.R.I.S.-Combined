@@ -89,8 +89,8 @@ discloses its backend: `[jarvis] served by <mode> (<model>)`, plus
 `jarvis ai status` for both paths' liveness, models, and breakers). The
 planner's vocabulary is **derived from the live catalog** — one engine-legal
 example phrase per playbook, pinned by tests — so the model can propose any
-of the 57 playbooks and can never be taught a phrasing the engine would
-refuse. Chat feeds recent turns and owner memory to the planner as delimited
+of the 57 hinted playbooks (all but the owner-taught `gui.app`, ADR-0026 D5)
+and can never be taught a phrasing the engine would refuse. Chat feeds recent turns and owner memory to the planner as delimited
 BACKGROUND CONTEXT — reference only, never instructions. The LLM never issues
 commands — it proposes intents that must pass the same validators as the
 deterministic engine (ADR-0007).
@@ -117,8 +117,9 @@ AI.
 network (shipped weights, stdlib inference) ranks the playbook vocabulary for
 loosely-phrased requests when the engine and the LLM planner have both
 declined. The vocabulary is **derived from the live catalog** — the trainer
-labels are `sorted(PLAYBOOKS ids) + unknown`, so all 57 playbooks are rankable
-and a test makes staleness loud. It is proposals-only by construction:
+labels are `sorted(PLAYBOOKS ids) + unknown` — 57 catalog playbooks (`gui.app`
+is owner-taught and excluded, ADR-0026 D5) plus `unknown` — so every hinted
+playbook is rankable and a test makes staleness loud. It is proposals-only by construction:
 reconstruction extractors stay limited to the vetted families (paths are never
 reconstructed), suggestions must re-pass the real matchers and are printed for
 you to type (`jarvis do …`), never executed; `--no-ai` switches it off.
@@ -127,7 +128,7 @@ byte-reproducible).
 
 ## Playbook breadth (ADR-0016)
 
-`jarvis playbooks` lists **57 deterministic playbooks** (was 12). Breadth follows one rule: every
+`jarvis playbooks` lists **58 deterministic playbooks** (was 12). Breadth follows one rule: every
 new command enters through a **guarded family** — a pinned binary, a fixed flag prefix, and
 argument slots validated at match time (a user flag such as `-rf` is a refusal that makes the
 intent unmatchable, never a sanitize; shell metacharacters are banned outright). Families:

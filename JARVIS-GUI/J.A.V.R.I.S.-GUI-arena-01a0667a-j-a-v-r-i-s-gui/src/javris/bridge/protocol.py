@@ -263,21 +263,22 @@ def classify_outcome(message: dict[str, Any]) -> Outcome:
         )
 
     if status == "refused":
+        # T3 is refused unconditionally: offering consent for it would be a
+        # lie about what the owner is able to authorise.
+        approvable = tier is not None and tier < 3 and _is_consent_refusal(outcome)
         return Outcome(
             kind=OutcomeKind.REFUSED,
-            text=_cap(_refusal_text(outcome, tier)),
+            text=_cap(_refusal_text(outcome, tier, approvable)),
             hint=_cap(hint),
             tier=tier,
-            # T3 is refused unconditionally: offering consent for it would be a
-            # lie about what the owner is able to authorise.
-            consent_required=tier is not None and tier < 3,
+            consent_required=approvable,
             payload=payload,
         )
 
     if is_error:
         return Outcome(
             kind=OutcomeKind.FAILED,
-            text=_cap(str(outcome.get("error") or payload.get("error") or "Request failed.")),
+            text=_cap(_failure_text(payload, outcome)),
             hint=_cap(hint),
             tier=tier,
             payload=payload,
@@ -312,12 +313,63 @@ def _is_unmatched(outcome: dict[str, Any]) -> bool:
     return "cannot map this request" in error
 
 
-def _refusal_text(outcome: dict[str, Any], tier: int | None) -> str:
-    """Compose the sentence shown when the kernel declines to act."""
+#: Phrases by which the kernel's approval gate identifies itself. Verified
+#: against kernel 1.20.0: ``ApprovalPolicy`` refuses a T2 plan with
+#: ``"... requires explicit approval; re-run with --yes ..."`` and the MCP
+#: surface attaches a hint ending in ``re-call jarvis_do with "allow": true``.
+#: Every other refusal -- cautious mode, a protected path, a static safety
+#: check, invalid input -- comes from a different guard that ``allow`` cannot
+#: lift, and the kernel says so in its own words.
+_CONSENT_ERROR_MARKER = "requires explicit approval"
+_CONSENT_HINT_MARKER = '"allow": true'
+
+
+def _is_consent_refusal(outcome: dict[str, Any]) -> bool:
+    """Whether re-sending with ``allow=True`` is the documented next step.
+
+    Keyed on what the kernel actually said rather than on the tier alone. A
+    tier-2 refusal under cautious mode and a tier-0 refusal of a protected
+    path both carry ``status: refused`` with a low tier; neither is a consent
+    decision, and approving either would re-send the request only to receive
+    the identical refusal. Showing an APPROVE button there would misstate what
+    the owner is able to authorise.
+    """
+    error = str(outcome.get("error") or "").lower()
+    hint = str(outcome.get("hint") or "").lower()
+    return _CONSENT_ERROR_MARKER in error or _CONSENT_HINT_MARKER in hint
+
+
+def _refusal_text(outcome: dict[str, Any], tier: int | None, approvable: bool) -> str:
+    """Compose the sentence shown when the kernel declines to act.
+
+    When consent is the answer, the sentence says so. When it is not, the
+    kernel's own reason is the honest thing to show: it names the guard that
+    fired (cautious mode, a protected path, a rejected argument) and, where
+    one exists, the CLI-side way past it.
+    """
     if tier is not None and tier >= 3:
         return "Refused: this is a tier-3 action, which the safety kernel never performs."
-    label = f"tier-{tier} " if tier is not None else ""
-    return f"Refused: this {label}action needs your explicit consent before it can run."
+    if approvable:
+        label = f"tier-{tier} " if tier is not None else ""
+        return f"Refused: this {label}action needs your explicit consent before it can run."
+    reason = str(outcome.get("error") or "").strip()
+    if reason:
+        return f"Refused: {reason}"
+    return "Refused: the safety kernel declined this request and gave no reason."
+
+
+def _failure_text(payload: dict[str, Any], outcome: dict[str, Any]) -> str:
+    """The most specific sentence a failed payload carries.
+
+    ``jarvis_do`` failures explain themselves in ``outcome.error``; argument
+    errors arrive as a top-level ``error``; a cite-or-abstain ``jarvis_explain``
+    puts its refusal-to-guess in ``note``. Each is the kernel's own sentence
+    and is preferred over a generic label, which tells the owner nothing.
+    """
+    for candidate in (outcome.get("error"), payload.get("error"), payload.get("note")):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return "Request failed."
 
 
 def _extract_payload(result: dict[str, Any]) -> dict[str, Any] | None:

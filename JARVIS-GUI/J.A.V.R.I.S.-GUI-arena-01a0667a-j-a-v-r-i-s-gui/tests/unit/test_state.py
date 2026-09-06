@@ -55,13 +55,37 @@ def test_nominal_cycle_is_legal(current: AssistantState, target: AssistantState)
         (AssistantState.BOOTING, AssistantState.PROCESSING),
         # Cannot go straight back to work from a fault without acknowledgement.
         (AssistantState.ERROR, AssistantState.PROCESSING),
-        (AssistantState.OFFLINE, AssistantState.STANDBY),
-        # Processing must resolve to an action or a reply.
-        (AssistantState.PROCESSING, AssistantState.STANDBY),
+        (AssistantState.ERROR, AssistantState.LISTENING),
+        # Offline means no agent; nothing can be said or done until one is.
+        (AssistantState.OFFLINE, AssistantState.SPEAKING),
+        (AssistantState.OFFLINE, AssistantState.EXECUTING),
+        (AssistantState.OFFLINE, AssistantState.LISTENING),
+        # A request cannot start acting before it has been understood.
+        (AssistantState.PROCESSING, AssistantState.LISTENING),
     ],
 )
 def test_illegal_transitions_are_refused(current: AssistantState, target: AssistantState) -> None:
     assert not can_transition(current, target)
+
+
+@pytest.mark.parametrize(
+    ("current", "target"),
+    [
+        # A request may resolve to nothing: a refusal, a declined prompt, a
+        # dictation handed back for review, a completed handshake. Each ends
+        # the request with nothing to say or do, and the HUD must settle
+        # rather than spin in PROCESSING with no request in flight.
+        (AssistantState.PROCESSING, AssistantState.STANDBY),
+        # The agent being unavailable is not the HUD being dead: the owner may
+        # retry the connection (a request in flight) and it may succeed.
+        (AssistantState.OFFLINE, AssistantState.PROCESSING),
+        (AssistantState.OFFLINE, AssistantState.STANDBY),
+    ],
+)
+def test_request_resolution_and_agent_recovery_are_legal(
+    current: AssistantState, target: AssistantState
+) -> None:
+    assert can_transition(current, target)
 
 
 def test_allowed_targets_includes_self_and_fault_states() -> None:

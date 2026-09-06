@@ -153,12 +153,21 @@ def test_unknown_tools_are_refused_before_the_wire() -> None:
 def test_http_envelope_is_normalised_into_the_stdio_shape() -> None:
     # Reusing one classifier is the point: the refusal-versus-failure
     # distinction must not have two implementations that can drift.
+    # The doorway runs the same tool handlers as the stdio server, so a consent
+    # refusal carries the kernel's real approval sentence and hint (1.20.0).
     envelope = {
         "result": {
             "outcome": {
                 "status": "refused",
                 "tier": 2,
-                "hint": "review the plan with jarvis_preview",
+                "error": (
+                    "T2 (system-level) action requires explicit approval; "
+                    "re-run with --yes to consent non-interactively"
+                ),
+                "hint": (
+                    "review the plan with jarvis_preview, then re-call jarvis_do "
+                    'with "allow": true to consent explicitly'
+                ),
             }
         },
         "isError": True,

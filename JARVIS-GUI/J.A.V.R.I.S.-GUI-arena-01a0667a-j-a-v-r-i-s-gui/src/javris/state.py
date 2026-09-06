@@ -37,13 +37,27 @@ _TRANSITIONS: dict[AssistantState, frozenset[AssistantState]] = {
     AssistantState.BOOTING: frozenset({AssistantState.STANDBY}),
     AssistantState.STANDBY: frozenset({AssistantState.LISTENING, AssistantState.PROCESSING}),
     AssistantState.LISTENING: frozenset({AssistantState.PROCESSING, AssistantState.STANDBY}),
-    AssistantState.PROCESSING: frozenset({AssistantState.EXECUTING, AssistantState.SPEAKING}),
+    # PROCESSING resolves to an action (EXECUTING), a reply (SPEAKING), or to
+    # nothing at all (STANDBY). The third arm is real, not a shortcut: the
+    # kernel's refusals, a declined prompt, a dictation handed back to the
+    # input field, a lost connection and a completed handshake all end a
+    # request without producing anything to say or do. Without it every one
+    # of those left the HUD spinning in PROCESSING with no request in flight.
+    AssistantState.PROCESSING: frozenset(
+        {AssistantState.EXECUTING, AssistantState.SPEAKING, AssistantState.STANDBY}
+    ),
     AssistantState.EXECUTING: frozenset({AssistantState.SPEAKING, AssistantState.STANDBY}),
     AssistantState.SPEAKING: frozenset({AssistantState.STANDBY, AssistantState.LISTENING}),
     # Recovery paths: an error is acknowledged back to standby; coming back
     # online replays the boot sequence so the UI is rebuilt from a known state.
     AssistantState.ERROR: frozenset({AssistantState.STANDBY, AssistantState.BOOTING}),
-    AssistantState.OFFLINE: frozenset({AssistantState.BOOTING}),
+    # OFFLINE is "the agent is unavailable", not "the HUD is dead": telemetry
+    # keeps running and the owner may retry the connection. A retry is a
+    # request in flight (PROCESSING); success settles to STANDBY. The BOOTING
+    # arm remains for a full re-initialisation.
+    AssistantState.OFFLINE: frozenset(
+        {AssistantState.BOOTING, AssistantState.PROCESSING, AssistantState.STANDBY}
+    ),
 }
 
 

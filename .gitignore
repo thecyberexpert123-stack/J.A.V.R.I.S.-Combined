@@ -1,0 +1,18 @@
+# Root-level ignores for the combined tree. Each sub-project carries its own
+# .gitignore for its build, cache and environment artefacts; only what applies
+# at the root belongs here.
+
+# Virtual environments created at the root by mistake
+/.venv/
+/venv/
+
+# OS and editor droppings
+.DS_Store
+Thumbs.db
+*.swp
+*~
+/.idea/
+/.vscode/
+
+# Reference imagery pulled during research, not part of either project
+/image-search/

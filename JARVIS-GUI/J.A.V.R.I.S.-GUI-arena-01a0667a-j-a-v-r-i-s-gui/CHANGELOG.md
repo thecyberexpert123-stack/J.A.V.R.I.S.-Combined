@@ -6,6 +6,92 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — combined-repository audit (2026-09-06)
+- **The agent could not be connected from the running HUD.** `connectAgent()`
+  existed and was tested, but nothing called it: no console verb, no control,
+  no QML binding (`grep` of `src/`, `tests/` and the commit history). Every
+  agent verb answered *"Use the connect action first"* for an action that did
+  not exist. Added `agent connect` (`commands/router.py`, a pure
+  `agent_connect` flag; the verb carries no tool call) and a pointer-only
+  `AgentLink` control in the console panel (`ui/components/AgentLink.qml`),
+  both routed to the same slot. The control names its state in words
+  (`AGENT OFFLINE` / `AGENT 1.20.0 · on demand` / `AGENT UNAVAILABLE`) and
+  withdraws the button when no kernel is on `PATH`; like the consent buttons
+  it is not tab-reachable, so a keyboard rhythm cannot start the agent. The
+  console panel grew by exactly the row's height so no log line was lost.
+  Usage strings and the not-connected message now name `agent connect`.
+- **Requests that resolved to nothing left the HUD stuck in `PROCESSING`.**
+  The transition table had no `PROCESSING -> STANDBY` edge and no way back
+  from `OFFLINE` short of a full reboot, so a consent refusal under
+  `confirm kernel-only`, a declined reversibility prompt, a connect
+  handshake, a disconnect mid-request, a returned dictation, and a successful
+  retry after a failed connect each ended with a request-less HUD reporting a
+  request in flight (traced with the real controller and stub transports
+  before changing anything). `state.py` now permits `PROCESSING -> STANDBY`
+  and `OFFLINE -> PROCESSING | STANDBY` — the minimal table change, no
+  redesign. `ERROR -> PROCESSING` stays illegal; the controller records the
+  owner's next explicit command as the acknowledgement (`ERROR -> STANDBY`)
+  instead of silently dropping every later transition. Approving consent now
+  passes `STANDBY -> PROCESSING -> EXECUTING` rather than requesting an
+  illegal `STANDBY -> EXECUTING` that was skipped, and a direct `do` under
+  `confirm kernel-only` reaches `EXECUTING` like the previewed path. A
+  cite-or-abstain `ask` (kernel says *"I will not guess"*) and a `plan` the
+  kernel will not plan are shown in the kernel's words and settle to
+  `STANDBY`; both previously rendered as `Request failed.` in `ERROR`.
+- **Refusals that consent cannot lift were offered for approval.**
+  `classify_outcome` set `consent_required` for every `status: "refused"`
+  below tier 3 and replaced the kernel's reason with *"needs your explicit
+  consent"*. Live 1.20.0 probing found three guards that answer with that
+  exact envelope and are **not** lifted by `allow: true`: cautious mode
+  (tier 2, refused identically with `allow`), a protected path
+  (`/etc/passwd`, tier 0) and the refusal-to-guess. Consent is now keyed on
+  the kernel's own approval sentence (`requires explicit approval`) or its
+  `"allow": true` hint — the hint is attached only for that case by
+  `mcp_server._tool_do` — never on the tier alone, and never at tier 3. Any
+  other refusal is shown as `Refused: <the kernel's sentence>` with no
+  APPROVE button; a refusal naming no guard fails closed. `FAILED` text now
+  prefers `outcome.error`, then `error`, then `note`, so a failure speaks in
+  the kernel's words before falling back to `Request failed.`
+- **`javris.core.qmltypes` was stale.** The committed description lacked 26
+  properties, 4 signals and 8 slots added since it was last generated, so
+  every agent, consent, voice, plan and battery binding was invisible to
+  qmllint. Regenerated with `tools/generate_qmltypes.py`, and a unit test
+  (`tests/unit/test_qmltypes_current.py`) now diffs the committed file against
+  the live meta-object so it cannot drift silently again (verified to fail on
+  the old file and pass on the new one).
+- **Executable bits restored** on `tools/check.sh`, `tools/generate_qmltypes.py`,
+  `tools/headless_render.py`, `tools/sandbox_gl_stubs.py` and
+  `tests/qml/run_qml_tests.py` (`100755` upstream, `100644` after the
+  combined import; `./tools/check.sh` was *Permission denied*).
+
+### Added — combined-repository audit
+- `tests/unit/test_controller_bridge_flow.py`: 17 tests driving the real
+  `HudController` with a scripted transport across the full request
+  lifecycle (connect, handshake, answer, abstention, unmatched plan, each
+  refusal class, approve/decline, disconnect mid-request, fault
+  acknowledgement, dictation), asserting state traces and console text.
+- `tests/unit/test_bridge_protocol.py`: refusal-class fixtures captured
+  verbatim from kernel 1.20.0 (cautious mode, protected path, approval gate,
+  explain abstention) and the fail-closed rule for a reasonless refusal.
+- `tests/qml/tst_AgentLink.qml`: 7 tests for the link control's readouts,
+  withdrawn action, click routing and non-focusability.
+- `docs/BACKEND-BRIDGE.md`: *Not every refusal is a consent decision* (guard
+  table), *Request lifecycle and the state machine* (event → state table),
+  the `agent connect` verb, and the live re-verification transcript.
+
+### Verified — combined-repository audit
+- `tools/check.sh` (ruff, ruff format, mypy strict, pytest, qmllint, Qt Quick
+  Test, headless render): all gates pass — **344** unit tests (was 306) and
+  **112** QML tests (was 103); `build/hud.png` re-rendered and inspected with
+  the new control in place.
+- Live end-to-end against a spawned `jarvis mcp serve` 1.20.0 through the real
+  controller and `KernelClient`: every scenario in the *Re-verified after the
+  state-machine and refusal fixes* section of `docs/BACKEND-BRIDGE.md`
+  produced the state trace and console text recorded there.
+- Not verified: the resident (HTTP doorway) transport was not re-driven live
+  in this round; it shares the classifier, whose new behaviour is covered by
+  `test_bridge_resident.py` with the kernel's real approval text.
+
 ### Fixed
 - **Refusal-to-guess is no longer mislabelled as a consent refusal**
   (`bridge/protocol.py`, `controller.py`). The kernel answers an unmappable

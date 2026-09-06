@@ -96,6 +96,30 @@ correctly as a malfunction. `classify_outcome` separates `REFUSED` from
 `FAILED`, and the HUD styles a refusal as a decision point with the kernel's own
 hint attached, not as a fault.
 
+### Not every refusal is a consent decision
+
+> **Verified against 1.20.0:** four distinct guards answer `status: "refused"`
+> with a tier below 3, and only one of them is lifted by `allow: true`.
+
+| Guard | `error` begins | `hint` | Tier seen | `allow: true` |
+| --- | --- | --- | --- | --- |
+| Approval policy | `T2 (system-level) action requires explicit approval; re-run with --yes …` | `… re-call jarvis_do with "allow": true …` | 2 | **lifts it** |
+| Cautious mode | `cautious mode is ON (early-days guard): T2+ actions are blocked. …` | *(empty)* | 2 | refused identically |
+| Protected path | `refusing to modify '/etc/passwd': authentication material and boot/kernel paths are protected` | *(empty)* | 0 | refused identically |
+| Refusal-to-guess | `I cannot map this request to a known playbook and I will not guess …` | `Known playbooks: …` | 0 | refused identically |
+
+The classifier therefore keys consent on **what the kernel said**, not on the
+tier: `consent_required` is true only when the error carries the approval
+sentence or the hint names `"allow": true`, and never at tier 3. Every other
+refusal is shown as `Refused: <the kernel's own sentence>` with no APPROVE
+button, because approving would re-send the request and receive the same
+answer — an APPROVE button there would misstate what the owner can authorise.
+A refusal that names no guard at all fails closed: no consent is synthesised.
+
+The kernel's approval hint is attached only by `mcp_server._tool_do` and only
+for the approval-policy case (kernel source: `_REFUSAL_HINT`), which is what
+makes the hint a reliable second signal.
+
 ### The hybrid gate
 
 Tiers answer *"how much authority does this need?"*. They do not answer
@@ -238,8 +262,41 @@ cannot transcribe; `voiceStatus` explains what is missing.
 | `do <request>` | `jarvis_preview` → `jarvis_do` | Previews first so gate 2 can see `undo` |
 | `suggest` | `jarvis_suggest` | Evidence-backed; the kernel executes nothing |
 | `confirm <policy>` | — | Local: gate-2 policy |
+| `agent connect` | — | Local: opens the connection (resident if installed, else spawn). Carries no tool call |
 | `agent status` | `jarvis_status` | Machine description |
 | `agent disconnect` | — | Local: ends the session |
+
+`agent connect` is the keyboard side of an explicit opt-in; the `LINK` control
+in the console panel (`AgentLink`) is the pointer side. Both call the same
+`connectAgent()` slot and nothing else does — in particular the HUD never
+connects on launch. The control reads `AGENT UNAVAILABLE` and withdraws the
+button when no kernel is on `PATH`, rather than offering a click that goes
+nowhere.
+
+## Request lifecycle and the state machine
+
+Every request the console sends must end in a state that describes the HUD as
+it now is. The transition table (`state.py`) permits `PROCESSING -> STANDBY`
+and `OFFLINE -> PROCESSING | STANDBY` for exactly this reason:
+
+| Event | States |
+| --- | --- |
+| `ask` answered | `PROCESSING -> SPEAKING -> STANDBY` |
+| `ask` abstained (cite-or-abstain) | `PROCESSING -> SPEAKING -> STANDBY`, note shown as `WARN` |
+| `do` completed | `PROCESSING -> EXECUTING -> SPEAKING -> STANDBY` |
+| `do` refused (any guard) | `… -> EXECUTING -> STANDBY`; prompt only for the approval guard |
+| `plan` the kernel will not guess | `PROCESSING -> STANDBY`, refusal and playbook list shown |
+| gate 2 prompt declined | `STANDBY` (nothing sent) |
+| consent approved | `STANDBY -> PROCESSING -> EXECUTING` |
+| `agent connect` handshake | `PROCESSING -> STANDBY` |
+| connect failed, then retried | `PROCESSING -> OFFLINE -> PROCESSING -> STANDBY` |
+| disconnect mid-request | `PROCESSING -> STANDBY`, any pending prompt cleared |
+| dictation handed back | `LISTENING -> PROCESSING -> STANDBY` |
+| transport or protocol fault | `-> ERROR`; the owner's next command acknowledges it (`ERROR -> STANDBY -> PROCESSING`) |
+
+`ERROR -> PROCESSING` stays illegal on purpose: a fault must be acknowledged
+before work resumes. The controller records the owner's next explicit request
+as that acknowledgement instead of leaving the HUD stuck.
 
 ## Layering
 
@@ -299,10 +356,44 @@ app control) without a contract change. Re-probed rather than assumed:
 One asymmetry worth recording, because it looks like a GUI bug and is not:
 `jarvis_do` on an unmatched request returns `status: refused` with
 `tier: 0`, which in isolation reads as "a tier-0 action awaiting consent".
-The GUI never renders it that way because it previews first and keys the
-unmatched branch off `plan.unmatched`, not off the tier. A client that called
-`jarvis_do` directly would show a spurious consent prompt for a request the
-kernel simply did not understand.
+The GUI never renders it that way: `classify_outcome` recognises the
+`<unmatched>` sentinel and, since the refusal-classification fix, keys consent
+on the kernel's approval sentence rather than on the tier at all — so the same
+holds under `confirm kernel-only`, where no preview runs first (see *Not every
+refusal is a consent decision*).
+
+### Re-verified after the state-machine and refusal fixes
+
+Driven through the real `HudController` and the real `KernelClient` against a
+spawned `jarvis mcp serve` at 1.20.0 (`JARVIS_NO_AI=1`, a temporary
+`JARVIS_STATE_DIR`), asserting the state trace and the console lines:
+
+- `agent status` before connecting → `ERROR The agent is not connected. Type
+  'agent connect' or use the LINK control.`; state untouched.
+- `agent connect` → `PROCESSING -> STANDBY`, `Agent connected (on-demand).
+  Kernel 1.20.0.`
+- `ask what kernel is this` → `PROCESSING -> SPEAKING -> STANDBY`, cited claim.
+- `ask what is the meaning of life` → `PROCESSING -> SPEAKING -> STANDBY`,
+  `WARN no cited fact matches this question; I will not guess (…)`.
+- `plan dance the macarena` → `PROCESSING -> STANDBY`, refusal-to-guess and
+  `58 known playbooks, including: …`.
+- `jarvis cautious on`, `confirm kernel_only`, `do upgrade the whole system` →
+  `PROCESSING -> EXECUTING -> STANDBY`, `WARN Refused: cautious mode is ON
+  (early-days guard) …`, **no prompt** (`pendingConsent == ""`).
+- `do delete /etc/passwd` → `WARN Refused: refusing to modify '/etc/passwd':
+  authentication material and boot/kernel paths are protected`, **no prompt**.
+- `jarvis cautious off`, `do upgrade the whole system` → `WARN Refused: this
+  tier-2 action needs your explicit consent before it can run.` plus the
+  kernel's hint; `pendingConsent == "upgrade the whole system"`,
+  `consentGate == "KERNEL_CONSENT"`. Declined → `Declined. Nothing was run.`
+- `ask …` then `agent disconnect` mid-request → `PROCESSING -> STANDBY`.
+- `agent connect` again → `PROCESSING -> STANDBY`, `Kernel 1.20.0.`
+
+Also observed and **not** a GUI defect: `do show uptime` matched `pkg.info`
+(`apt-cache show uptime`) and failed with `exit code 100` because the sandbox
+has no package index; the HUD correctly reported `ERROR step 1 (show
+repository information for uptime) failed with exit code 100`, and the next
+command acknowledged the fault and proceeded.
 - **voice** (with a stubbed recorder and STT): timestamps and `[BLANK_AUDIO]`
   annotations stripped, transcript delivered to the input field, never executed
 

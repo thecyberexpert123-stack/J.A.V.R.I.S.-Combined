@@ -292,3 +292,159 @@ def test_unmatched_keeps_the_playbook_hint_for_the_owner() -> None:
     # refusal-to-guess, so it must survive classification.
     outcome = protocol.classify_outcome(tool_response(UNMATCHED_PAYLOAD, is_error=True))
     assert "sys.uptime" in outcome.hint
+
+
+# -- refusals that consent cannot lift ---------------------------------------
+#
+# Captured from a live ``jarvis mcp serve`` at kernel 1.20.0. All three carry
+# ``status: "refused"`` with a tier below 3, which is exactly the shape a
+# consent refusal has -- but each was issued by a guard that ``allow`` does
+# not reach. Re-sending with consent returns the identical refusal.
+
+#: ``jarvis_do`` with ``allow: true`` under cautious mode. Same text with and
+#: without consent; tier 2; the kernel attaches no hint.
+CAUTIOUS_PAYLOAD = {
+    "outcome": {
+        "status": "refused",
+        "tier": 2,
+        "playbook": "pkg.upgrade",
+        "error": (
+            "cautious mode is ON (early-days guard): T2+ actions are blocked. "
+            'Review the plan (jarvis do "..." --preview), then either pass '
+            "--cautious-ok for this one action or turn the guard off: jarvis cautious off"
+        ),
+        "hint": "",
+        "snapshot": None,
+    }
+}
+
+#: ``jarvis_do`` targeting a protected path. Tier 0, no hint.
+PROTECTED_PATH_PAYLOAD = {
+    "outcome": {
+        "status": "refused",
+        "tier": 0,
+        "playbook": "fs.remove",
+        "error": (
+            "refusing to modify '/etc/passwd': authentication material and "
+            "boot/kernel paths are protected"
+        ),
+        "hint": "",
+        "snapshot": None,
+    }
+}
+
+#: The one refusal consent *does* lift: ``ApprovalPolicy`` declining a T2 plan
+#: that was sent without ``allow``. Error text and hint verbatim.
+APPROVAL_PAYLOAD = {
+    "outcome": {
+        "status": "refused",
+        "tier": 2,
+        "playbook": "pkg.upgrade",
+        "error": (
+            "T2 (system-level) action requires explicit approval; "
+            "re-run with --yes to consent non-interactively"
+        ),
+        "hint": (
+            "review the plan with jarvis_preview, then re-call jarvis_do with "
+            '"allow": true to consent explicitly'
+        ),
+        "snapshot": None,
+    }
+}
+
+
+@pytest.mark.parametrize("payload", [CAUTIOUS_PAYLOAD, PROTECTED_PATH_PAYLOAD])
+def test_a_refusal_consent_cannot_lift_is_not_offered_for_approval(
+    payload: dict[str, Any],
+) -> None:
+    # Offering APPROVE here would promise an authority the owner does not
+    # have: the click re-sends the request and receives the same refusal.
+    outcome = protocol.classify_outcome(tool_response(payload, is_error=True))
+    assert outcome.kind is OutcomeKind.REFUSED
+    assert outcome.consent_required is False
+
+
+@pytest.mark.parametrize("payload", [CAUTIOUS_PAYLOAD, PROTECTED_PATH_PAYLOAD])
+def test_a_refusal_consent_cannot_lift_shows_the_kernel_reason(
+    payload: dict[str, Any],
+) -> None:
+    # The kernel names the guard that fired and, where one exists, the way
+    # past it. That sentence is the useful one; a generic "needs your
+    # consent" line would be false.
+    outcome = protocol.classify_outcome(tool_response(payload, is_error=True))
+    reason = payload["outcome"]["error"]
+    assert reason in outcome.text
+    assert "consent" not in outcome.text.lower()
+
+
+def test_the_approval_gate_is_recognised_by_the_kernel_sentence() -> None:
+    outcome = protocol.classify_outcome(tool_response(APPROVAL_PAYLOAD, is_error=True))
+    assert outcome.kind is OutcomeKind.REFUSED
+    assert outcome.tier == 2
+    assert outcome.consent_required is True
+    assert "consent" in outcome.text.lower()
+
+
+def test_the_approval_gate_is_recognised_by_the_hint_alone() -> None:
+    # Older captures (kernel 1.10.2) carried the hint without the error text.
+    # Both signals identify the gate; either one suffices.
+    payload = {
+        "outcome": {"status": "refused", "tier": 2, "hint": APPROVAL_PAYLOAD["outcome"]["hint"]}
+    }
+    outcome = protocol.classify_outcome(tool_response(payload, is_error=True))
+    assert outcome.consent_required is True
+
+
+def test_tier_three_is_never_approvable_even_with_the_approval_sentence() -> None:
+    # Belt and braces: the T3 rule outranks the sentence match.
+    payload = {"outcome": dict(APPROVAL_PAYLOAD["outcome"], tier=3)}
+    outcome = protocol.classify_outcome(tool_response(payload, is_error=True))
+    assert outcome.consent_required is False
+    assert "never" in outcome.text.lower()
+
+
+def test_a_reasonless_low_tier_refusal_defaults_to_no_consent() -> None:
+    # Fail closed. A refusal that names no gate is not assumed to be the
+    # consent gate; the GUI never synthesises an approval opportunity.
+    payload = {"outcome": {"status": "refused", "tier": 1}}
+    outcome = protocol.classify_outcome(tool_response(payload, is_error=True))
+    assert outcome.kind is OutcomeKind.REFUSED
+    assert outcome.consent_required is False
+    assert "no reason" in outcome.text.lower()
+
+
+# -- failures speak in the kernel's words ------------------------------------
+
+#: A cite-or-abstain ``jarvis_explain`` with no matching fact, captured at
+#: kernel 1.20.0. ``isError`` is true and the refusal-to-guess is in ``note``.
+ABSTAIN_PAYLOAD = {
+    "status": "refused",
+    "note": (
+        "no cited fact matches this question; I will not guess "
+        "(browse what I know: jarvis facts \u2014 12 facts, KB v1)"
+    ),
+    "claim": "",
+    "ai_text": None,
+    "sources": [],
+}
+
+
+def test_an_explain_abstention_shows_the_kernel_note() -> None:
+    # "Request failed." would report the kernel's most important behaviour --
+    # refusing to guess -- as a malfunction.
+    outcome = protocol.classify_outcome(tool_response(ABSTAIN_PAYLOAD, is_error=True))
+    assert outcome.kind is OutcomeKind.FAILED
+    assert "I will not guess" in outcome.text
+    assert outcome.payload["status"] == "refused"
+
+
+def test_a_failure_prefers_the_outcome_error_over_the_note() -> None:
+    payload = {"note": "secondary", "outcome": {"status": "failed", "error": "primary"}}
+    outcome = protocol.classify_outcome(tool_response(payload, is_error=True))
+    assert outcome.text == "primary"
+
+
+def test_a_failure_with_no_message_falls_back_to_a_generic_line() -> None:
+    outcome = protocol.classify_outcome(tool_response({"outcome": {}}, is_error=True))
+    assert outcome.kind is OutcomeKind.FAILED
+    assert outcome.text == "Request failed."
