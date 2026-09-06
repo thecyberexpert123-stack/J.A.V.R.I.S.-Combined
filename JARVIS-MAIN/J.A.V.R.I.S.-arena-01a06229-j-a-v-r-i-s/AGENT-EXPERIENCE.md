@@ -420,3 +420,33 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   brief actually running). No files outside `docs/`, `CHANGELOG.md`, this file and `TASKS.md`
   were touched for C3.
 
+## 2026-09-06 · C3 implemented — the doorway talks to systemd
+
+- **Wire the ping where a hang cannot reach it.** `socketserver.BaseServer.serve_forever` calls
+  `service_actions()` on the accept-loop thread every `poll_interval`; request handlers run on
+  their own threads. Putting `WATCHDOG=1` in `service_actions()` gives exactly the semantics
+  wanted: a stuck *request* (say `sudo` waiting on a lock) does not restart the doorway, a
+  stuck *interpreter* does. The test blocks a handler and watches the next ping arrive anyway;
+  moving the ping into the handler (mutation 1) fails that test and the conversation test.
+- **Consume the environment, then prove it with a real child.** The C API's
+  `unset_environment=1` is not decoration: the Runner copies `os.environ` into every playbook
+  step. A test spawns an actual `python -c` with `dict(os.environ)` and asserts no
+  `NOTIFY_SOCKET`/`WATCHDOG_*` reaches it — an in-process dict check would not have caught a
+  future refactor that reads the variables without popping them.
+- **The fake systemd is the real protocol.** An abstract `AF_UNIX` datagram socket is what
+  `$NOTIFY_SOCKET` names on a live system, so every assertion is about bytes systemd would
+  receive. The end-to-end run of the actual CLI under that socket gave `READY` in 0.10 s and
+  pings at 0.25/0.75/1.25/1.75 s for a 1 s watchdog — the cadence is visible, not inferred.
+- **Small things found by running, not reading:** `{:.0f}` printed "watchdog every 0s" for a
+  sub-second test interval (now `:g`); the analyser's "2.0 OK :-)" line broke a naive
+  `split(":")` parser (now a regex). Both would have shipped from a desk review.
+- **Refuse before writing.** `--harden` renders `ReadWritePaths=` from the resolved state dir;
+  a path with whitespace or quotes is refused *before* the unit files are touched, and the
+  test checks that nothing was half-written. Implementing systemd's quoting rules for the one
+  state dir that would need them is not worth the bug surface.
+- **Verified:** ruff / format / mypy clean; 904 passed (`-m "not live"`); 30 new tests stable
+  over three runs; four mutations caught; live CLI conversation as above; offline analyser
+  brief 9.6 → 2.0, doorway 9.6 unchanged (asserted as an honesty check). **Not verified:**
+  anything under a live user service manager. Promotion of `--harden` to default waits for one
+  clean `journalctl --user -u jarvis-brief` on the owner's machine.
+

@@ -5,7 +5,9 @@
   `docs/RESEARCH-agent-construction-and-future-tech-2026.md` §4.2 (`sd_notify(3)`), §3.7 (systemd
   hardening), candidate C3, owner question 3). Owner answers (`TASKS.md` §D7/§D8): **D1 + D2
   accepted**; **D3 accepted as opt-in `--harden`**; C3b/C3c kept as recorded options.
-  Implementation follows in the next commit; this text is the accepted design.
+  **Implemented 2026-09-06** (`src/jarvis/system/sdnotify.py`, `cli/serve.py`, `brief/install.py`,
+  `tests/test_sdnotify.py`, 30 tests). Owner-machine verification (live watchdog restart, one
+  confined brief run) is still open — commands under Consequences.
 - **Context — three systemd user units, no supervision, no confinement.** JARVIS renders three
   unit templates: the resident doorway `jarvis-serve.service` (`cli/serve.py::unit_content`,
   ADR-0018; `Restart=on-failure`, `RestartSec=2`, nothing else), the briefing oneshot

@@ -51,7 +51,14 @@ repository is not versioned independently; the sub-projects are.
   user-manager sandboxing directives imply `NoNewPrivileges`/user namespaces and
   break `sudo -n`, so only the never-escalating brief unit can be confined
   (measured 9.6 → 2.0); the doorway gets supervision, not confinement. Owner
-  accepted D1+D2 and D3 as opt-in (`TASKS.md` §D7/§D8); implementation follows.
+  accepted D1+D2 and D3 as opt-in (`TASKS.md` §D7/§D8).
+- **Sequence item C3 — implemented** (2026-09-06, kernel; ships in 1.21.0): stdlib
+  `sd_notify` client, `jarvis-serve.service` now `Type=notify` + `WatchdogSec=30`
+  (hung loop restarted within ~32 s; inert when run by hand), `jarvis brief
+  install --harden` opt-in confinement for the never-escalating brief unit;
+  30 new tests, kernel suite 904 passed. GUI untouched (`bridge/resident.py`
+  only polls `/v1/health`). Live watchdog restart still to be observed on the
+  owner's machine.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the

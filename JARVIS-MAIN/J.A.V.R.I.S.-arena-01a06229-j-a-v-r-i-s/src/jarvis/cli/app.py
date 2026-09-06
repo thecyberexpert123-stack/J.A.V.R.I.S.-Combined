@@ -1531,7 +1531,7 @@ def _cmd_brief(args: argparse.Namespace) -> int:
         if action == "install":
             from jarvis.brief.install import install_timer
 
-            return install_timer(args.on, Path.home())
+            return install_timer(args.on, Path.home(), harden=bool(getattr(args, "harden", False)))
         if action == "uninstall":
             from jarvis.brief.install import uninstall_timer
 
@@ -2069,6 +2069,12 @@ def build_parser() -> argparse.ArgumentParser:
         "install", help="write + enable a systemd --user timer (opt-in)"
     )
     p_brief_ins.add_argument("--on", choices=("daily", "weekly"), default="daily")
+    p_brief_ins.add_argument(
+        "--harden",
+        action="store_true",
+        help="opt-in systemd confinement profile for the briefing unit (ADR-0029 D3; "
+        "the brief never runs a playbook, so it can be sandboxed)",
+    )
     p_brief_ins.set_defaults(func=_cmd_brief, brief_command="install")
     p_brief_sub.add_parser("uninstall", help="remove the timer; back to on-demand").set_defaults(
         func=_cmd_brief, brief_command="uninstall"

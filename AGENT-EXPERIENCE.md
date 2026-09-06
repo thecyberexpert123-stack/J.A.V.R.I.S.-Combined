@@ -99,3 +99,17 @@ was edited outside jarvis; anyone scripting `doctor` in the GUI's future health
 panel should treat the new `journal_chain` JSON key as part of `clean`. Still
 uncommitted pending the owner's commit instruction (`TASKS.md` A4 / D3).
 
+## 2026-09-06 · Sequence item C3 (cross-cutting note)
+
+Kernel-only in code, but it changes what the HUD's resident mode can rely on:
+`jarvis-serve.service` is now supervised (`Type=notify` + `WatchdogSec=30`),
+so a doorway that stops answering `/v1/health` is restarted by systemd within
+about 32 seconds instead of staying "active (running)" forever. The HUD's
+`bridge/resident.py` polls `/v1/health` and already treats a refused connection
+as "resident unavailable → fall back to stdio", so no GUI change is needed; a
+future HUD health panel could show `systemctl --user show jarvis-serve -p
+StatusText` for the same line the doorway sends. The finding worth carrying
+across both halves: user-manager sandboxing directives and `sudo -n` are
+mutually exclusive — anything in this tree that may escalate cannot be
+confined by unit directives alone.
+

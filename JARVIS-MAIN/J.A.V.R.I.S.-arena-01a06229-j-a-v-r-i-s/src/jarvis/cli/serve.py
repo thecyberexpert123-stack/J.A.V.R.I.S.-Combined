@@ -17,6 +17,17 @@ Stdlib-only by design (ADR-0005). Hardening asserted by tests (ADR-0018 D2):
 loopback bind, bearer token with constant-time compare, Host-header check,
 method/path allowlists, 64 KiB body cap, JSON-only bodies, no CORS answers,
 token never logged.
+
+Supervision (ADR-0029 D1/D2): under systemd the doorway speaks ``sd_notify`` —
+``READY=1`` once the socket listens, ``WATCHDOG=1`` from the accept loop at
+half ``WatchdogSec`` (a hung *request* runs on its own thread and cannot starve
+the ping; a dead interpreter stops it, which is the point), a token-free
+``STATUS=`` line after each request, ``STOPPING=1`` on shutdown. Without
+``$NOTIFY_SOCKET`` all of it is inert and behaviour is byte-identical. The
+unit gains ``Type=notify`` + ``WatchdogSec=30`` and deliberately **no**
+sandboxing directives: in a user manager they imply ``NoNewPrivileges``/user
+namespaces, and both break the ``sudo -n`` that T1/T2 steps need (ADR-0029
+Context). Supervision, not confinement.
 """
 
 from __future__ import annotations
@@ -39,6 +50,7 @@ from jarvis import __version__
 from jarvis.cli.mcp_server import _TOOL_HANDLERS
 from jarvis.journal.sqlite import state_dir
 from jarvis.safety.tiers import SafetyRefusal
+from jarvis.system import sdnotify
 
 DEFAULT_PORT = 8777
 MAX_BODY_BYTES = 64 * 1024
@@ -46,6 +58,7 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _TOOL_PATH = re.compile(r"^/v1/tools/(jarvis_(?:status|facts|explain|suggest|preview|do))$")
 UNIT_NAME = "jarvis-serve.service"
 GUI_COMMAND = "jarvis-gui"
+WATCHDOG_SEC = 30  # ADR-0029 D2: a stuck loop is noticed within 30 s; pings every 15 s
 
 
 # --------------------------------------------------------------------------
@@ -91,11 +104,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _audit(self, status: int) -> None:
         """One stderr line per request; never the token, never the body."""
-        print(
-            f"[jarvis-serve] {self.command} {self.path} -> {status}",
-            file=sys.stderr,
-            flush=True,
-        )
+        line = f"{self.command} {self.path} -> {status}"
+        print(f"[jarvis-serve] {line}", file=sys.stderr, flush=True)
+        server = self.server
+        if isinstance(server, DoorwayServer):
+            server.note_request(line)
 
     def _reply(self, status: int, payload: dict[str, object]) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -181,7 +194,48 @@ class _Handler(BaseHTTPRequestHandler):
         self._reply(501, {"error": "no CORS on a loopback safety boundary"})
 
 
-def build_server(host: str, port: int, token: str) -> ThreadingHTTPServer:
+class DoorwayServer(ThreadingHTTPServer):
+    """`ThreadingHTTPServer` plus the systemd conversation (ADR-0029 D1).
+
+    `serve_forever` calls `service_actions()` on the accept-loop thread once
+    per `poll_interval`; that is where the watchdog ping lives, so request
+    handlers (own threads) can neither starve it nor fake it. `notifier` is
+    inert unless the process was started with `$NOTIFY_SOCKET`.
+    """
+
+    notifier: sdnotify.SdNotify
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        notifier: sdnotify.SdNotify | None = None,
+    ) -> None:
+        super().__init__(server_address, handler)
+        self.notifier = notifier if notifier is not None else sdnotify.SdNotify(None)
+        self._served = 0
+        self._status_lock = threading.Lock()
+
+    def service_actions(self) -> None:  # accept loop, every poll_interval
+        self.notifier.watchdog()
+
+    def note_request(self, line: str) -> None:
+        with self._status_lock:
+            self._served += 1
+            served = self._served
+        self.notifier.status(f"serving; {served} request(s); last: {line}")
+
+    def shutdown(self) -> None:
+        self.notifier.stopping()
+        super().shutdown()
+
+
+def build_server(
+    host: str,
+    port: int,
+    token: str,
+    notifier: sdnotify.SdNotify | None = None,
+) -> DoorwayServer:
     """Build the doorway; refuse non-loopback binds outright."""
     if host not in _LOOPBACK_HOSTS:
         raise SafetyRefusal(f"refusing to bind {host!r}: the doorway serves localhost only")
@@ -189,14 +243,17 @@ def build_server(host: str, port: int, token: str) -> ThreadingHTTPServer:
         "type[_Handler]",
         type("BoundHandler", (_Handler,), {"token": token}),
     )
-    server = ThreadingHTTPServer((host, port), handler)
+    server = DoorwayServer((host, port), handler, notifier)
     # the Host check must match the BOUND port (port 0 = ephemeral)
     handler.bound_port = server.server_address[1]
     return server
 
 
 def run_server(host: str, port: int, token: str) -> int:
-    server = build_server(host, port, token)
+    # Consume $NOTIFY_SOCKET/$WATCHDOG_* *before* anything can spawn a child:
+    # playbook steps copy os.environ and must never inherit them (ADR-0029 D1).
+    notifier = sdnotify.from_environment()
+    server = build_server(host, port, token, notifier)
     done = threading.Event()
 
     def _stop(signum: int, _frame: object) -> None:
@@ -212,6 +269,16 @@ def run_server(host: str, port: int, token: str) -> int:
         file=sys.stderr,
         flush=True,
     )
+    if notifier.enabled:
+        supervised = (
+            f"watchdog every {notifier.ping_interval_s:g}s"
+            if notifier.watchdog_enabled
+            else "no watchdog configured"
+        )
+        print(f"[jarvis-serve] systemd notify: on ({supervised})", file=sys.stderr, flush=True)
+    # READY only once the socket is bound and the loop is about to run —
+    # Type=notify holds `systemctl start` (and follow-up units) until this.
+    notifier.ready(f"listening on {host}:{server.server_address[1]}; 0 request(s)")
     try:
         server.serve_forever(poll_interval=0.25)
     finally:
@@ -225,7 +292,15 @@ def run_server(host: str, port: int, token: str) -> int:
 
 
 def unit_content(python_exe: str, port: int) -> str:
-    """The systemd user unit. Contains no secrets (the token file holds those)."""
+    """The systemd user unit. Contains no secrets (the token file holds those).
+
+    Supervised, not confined (ADR-0029 D2): ``Type=notify`` waits for the
+    doorway's ``READY=1``; ``WatchdogSec`` restarts a hung loop via the
+    existing ``Restart=on-failure`` (which covers watchdog expiry — switching
+    to ``on-watchdog`` would drop crash restarts). No ``NoNewPrivileges=``,
+    ``Protect*=``, ``SystemCallFilter=`` or ``UMask=``: every one of them breaks
+    ``sudo -n`` for T1/T2 steps in a user manager (ADR-0029 Context).
+    """
     return (
         "[Unit]\n"
         "Description=JARVIS resident doorway (loopback-only, token-authed; ADR-0018)\n"
@@ -233,7 +308,10 @@ def unit_content(python_exe: str, port: int) -> str:
         "After=default.target\n"
         "\n"
         "[Service]\n"
+        "Type=notify\n"
+        "NotifyAccess=main\n"
         f"ExecStart={python_exe} -m jarvis serve --bind 127.0.0.1 --port {port}\n"
+        f"WatchdogSec={WATCHDOG_SEC}\n"
         "Restart=on-failure\n"
         "RestartSec=2\n"
         "\n"

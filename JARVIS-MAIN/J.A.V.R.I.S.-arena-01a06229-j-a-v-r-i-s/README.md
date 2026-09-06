@@ -199,7 +199,7 @@ Level-2 proactivity, propose-only — the agent may knock, never act on its own:
 jarvis brief                  # compose + decide + deliver (prints "nothing to report" or the briefing)
 jarvis brief status           # runs, notified, silenced, silence rate, feedback counts
 jarvis brief accept|dismiss <id>   # feedback recorded (policy learning parked)
-jarvis brief install [--on daily|weekly]   # opt-in systemd --user timer
+jarvis brief install [--on daily|weekly] [--harden]   # opt-in systemd --user timer; --harden = confined unit (ADR-0029)
 jarvis brief uninstall
 ```
 
@@ -279,6 +279,15 @@ logged). It serves exactly the six MCP tools with **identical consent semantics*
 needs a per-call `allow: true`, T3 is always refused, there is no persistent yes and no
 exec passthrough — a doorway, never an actor. Packaging never enables it; `uninstall` removes
 every trace.
+
+**Supervised, not confined (ADR-0029).** Under systemd the doorway speaks `sd_notify`: the unit
+is `Type=notify` with `WatchdogSec=30`, so a hung loop is restarted within ~32 s and
+`systemctl --user status jarvis-serve` shows a live `Status:` line (request counts only — never
+the token or a body). Run by hand, none of this is active. The unit carries **no** sandboxing
+directives on purpose: in a user manager they imply `NoNewPrivileges`/user namespaces and both
+break the `sudo -n` that T1/T2 steps need — its `systemd-analyze security` score honestly stays
+9.6. The briefing unit never runs a playbook, so `jarvis brief install --harden` gives *it* the
+full confinement profile (9.6 → 2.0 offline); opt-in until one verified run on real hardware.
 
 ## MCP surface (ADR-0013 M9a)
 

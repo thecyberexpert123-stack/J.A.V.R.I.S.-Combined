@@ -31,6 +31,43 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
+### Added — doorway supervision + opt-in brief confinement (2026-09-06, ADR-0029 implemented)
+- **`src/jarvis/system/sdnotify.py`** (stdlib): `READY=1`, `STATUS=`, `WATCHDOG=1`, `STOPPING=1`
+  over the `$NOTIFY_SOCKET` datagram socket (abstract `@` names handled); ping cadence = half
+  `$WATCHDOG_USEC` (`sd_watchdog_enabled(3)` convention); `$WATCHDOG_PID` honoured; the three
+  variables are **removed from `os.environ`** at start so playbook children never inherit them
+  (tested with a real child process); send failures logged once, never raised; no way to send
+  `WATCHDOG=trigger` (policy failures pause, they do not restart).
+- **`jarvis serve`**: `DoorwayServer` pings from `service_actions()` on the accept loop — a hung
+  *request* cannot starve it (tested by blocking a handler), a dead interpreter stops it (the
+  point); `READY=1` only after the socket is bound; a token-free `STATUS=serving; N request(s);
+  last: METHOD path -> code` after each request; `STOPPING=1` on shutdown. Without
+  `$NOTIFY_SOCKET` everything is inert — behaviour byte-identical to 1.20.
+- **`jarvis-serve.service`** gains `Type=notify`, `NotifyAccess=main`, `WatchdogSec=30`;
+  `Restart=on-failure` kept (it already covers watchdog expiry). **No sandboxing directives** —
+  test pins their absence, because in a user manager they imply `NoNewPrivileges`/user
+  namespaces and both break `sudo -n` (`setpriv --no-new-privs sudo -n true` and
+  `unshare -U sudo -n true` fail with sudo's own messages). Score honestly stays 9.6.
+- **`jarvis brief install --harden`** (opt-in): the briefing unit — which never runs a
+  playbook — gets the measured confinement profile (`PrivateUsers`, `NoNewPrivileges`,
+  `ProtectSystem=strict` + `ProtectHome=read-only` + `ReadWritePaths=<resolved state dir>`,
+  `PrivateTmp/Devices`, `ProtectKernel*`, `ProtectClock/Hostname`, `Restrict*`, empty
+  `CapabilityBoundingSet`, `RestrictAddressFamilies=AF_UNIX`, `SystemCallFilter=@system-service`
+  + `EPERM`, `UMask=0077`, `LimitCORE=0`); `systemd-analyze security --offline` **9.6 → 2.0**.
+  A state dir that cannot be quoted safely is refused *before* anything is written. Default
+  unit text unchanged; plain re-install reverts.
+- **Tests (`tests/test_sdnotify.py`, +30):** fake systemd on an abstract datagram socket for
+  every message; cadence with a fake clock; PID mismatch; malformed/zero values; environment
+  consumed; live doorway conversation; hung-request ping; shutdown `STOPPING=1`; unit-text
+  pins for both units; offline analyser re-measures the ADR numbers when present (skips
+  otherwise). Four deliberate regressions (ping from the handler, env not consumed, full
+  instead of half interval, `NoNewPrivileges` in the doorway unit) each fail the intended test.
+- **Verified with the real CLI** under a fake `NOTIFY_SOCKET`: `READY` 0.10 s after start,
+  `WATCHDOG=1` at 0.25/0.75/1.25/1.75 s for `WATCHDOG_USEC=1000000`, `STATUS` after
+  `/v1/health`, `STOPPING=1` on SIGTERM, exit 0. **Not verified here:** a live user service
+  manager (watchdog-triggered restart, `Type=notify` readiness gating, one confined brief run)
+  — the sandbox has none; the ADR lists the owner-machine commands.
+
 ### Accepted — ADR-0029 doorway watchdog + per-unit hardening (2026-09-06; ADR only in this entry, no code change yet)
 - `docs/adr/0029-doorway-watchdog-and-unit-hardening.md`: D1 stdlib `sd_notify` client for the
   resident doorway (`READY=1`, `WATCHDOG=1` at half `WATCHDOG_USEC` from the accept loop,
