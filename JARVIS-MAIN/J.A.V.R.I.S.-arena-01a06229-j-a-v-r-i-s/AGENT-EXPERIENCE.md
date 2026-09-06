@@ -450,3 +450,27 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   anything under a live user service manager. Promotion of `--harden` to default waits for one
   clean `journalctl --user -u jarvis-brief` on the owner's machine.
 
+## 2026-09-06 · C1 — ADR-0030 drafted, paused for the owner (no code)
+
+- **Bind rules to params, not argv.** The first draft keyed rules on argv tokens; running
+  `match()` + `build()` for the T1/T2 catalogue showed why that is wrong for an owner-facing
+  file: the same intent renders as `apt-get remove -y -- htop` here and `pacman -Rs -- htop`
+  there. The params dict (`names`, `path`, `src`/`dst`, `unit`) is the stable, owner-meaningful
+  object, and it is exactly what the orchestrator has in hand at the three `check_argv` sites.
+- **The undo path is the awkward one — say so instead of hand-waving.** `_undo_payload` stores
+  steps and argv only; `_rebuild_undo_steps` never learns which playbook produced them. Three
+  honest options (skip / argv-only subset / add `playbook_id`+`params` additively) went to the
+  owner as D-B rather than being decided in the ADR, because U3 touches a persisted format.
+- **Fail closed *per scope*, not system-wide.** A policy file with a typo that stops every
+  playbook would teach the owner to delete the file — the worst outcome for a deny-list. The ADR
+  therefore refuses only what the broken file names, keeps T0 (all 38 verified
+  `requires_root=False`), and reports the degraded state in `doctor`/`status`.
+- **Fetched the primary source before drafting.** Research II had Progent as a `[snippet]`; the
+  v3 HTML (§4.1–4.2) confirmed the two details the design leans on — forbid rules are sorted
+  before allow rules, and policy updates are classified narrowing-vs-expansion — and surfaced
+  the fallback taxonomy (terminate / ask / return message) that D3 mirrors.
+- **Verified:** every repo line cited in the ADR was read this session; params keys observed
+  by executing `match()`; T0 root-free claim checked by grep (`requires_root=True` occurs 0
+  times in `inspect_cmds.py`) and by building 31 of 38 T0 playbooks from test/eval phrases.
+  **Not verified:** nothing to run yet — no code in this entry.
+

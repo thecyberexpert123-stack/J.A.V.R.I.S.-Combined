@@ -59,6 +59,10 @@ repository is not versioned independently; the sub-projects are.
   30 new tests, kernel suite 904 passed. GUI untouched (`bridge/resident.py`
   only polls `/v1/health`). Live watchdog restart still to be observed on the
   owner's machine.
+- **Sequence item C1 — ADR-0030 drafted, paused** (2026-09-06, kernel docs only):
+  owner-authored, narrowing-only argument policy over playbook params; storage
+  (integrity-scoped or operational) and `plan`/`undo` semantics are the owner's
+  decisions before any code.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the

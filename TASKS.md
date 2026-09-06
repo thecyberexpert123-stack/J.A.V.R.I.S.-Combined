@@ -77,14 +77,16 @@ Origin: research §4.2 (`sd_notify(3)`), §3.7 (systemd hardening); baseline mea
 - [ ] **C3b (owner option):** confined profile for `tier_ceiling = 0` charters once the brief profile is proven on real hardware (T0 tools need wider syscall/address-family allowances).
 - [ ] **C3c (owner option, architectural):** a second doorway mode `jarvis serve --max-tier 0` that refuses T1/T2 and can therefore take the full confinement profile.
 
-### B-C1 · Owner-authored, narrowing-only argument policy — *OWNER-Q; security-sensitive* (M)
-Origin: research §3.3 (Progent monotonic confinement, CaMeL), §3.4 (AgentSpec: human-owned rules).
-- [ ] Inspect `safety/tiers.py` (`check_argv`, validators), `planner/catalog_common.py clean_arg`, playbook `build()` param flow, `integrity.default_scope()`, `safety/charter.py` JSON conventions.
-- [ ] ADR draft: policy file format (JSON, owner-written, integrity-scoped like charters); rule shape = `{playbook, arg, deny_regex | allow_prefixes}`; **rules can only refuse** — they never grant, never raise a tier, never bypass consent; evaluation point = the same place `check_argv` runs (all three call sites in `core/orchestrator.py`); refusal text names the rule; `jarvis policy lint|show`.
-- [ ] Owner decides: integrity-scoped (needs re-baseline to edit) **or** operational (`.state`-style); default rule set shipped empty.
-- [ ] Owner accepts → implement; tests: rule refuses, absent rule = today's behaviour, malformed file = refuse-to-load with clear message (fail closed), undo steps re-validated too.
-- Acceptance: M3 fault suite still 0 escapes; new negative tests; no playbook behaviour changes without a rule present.
-- Verification plan: unit + fault suite + full gate; `jarvis policy lint` on sample files.
+### B-C1 · Owner-authored, narrowing-only argument policy — *OWNER-Q; security-sensitive* (M) — `[!]` **ADR-0030 drafted 2026-09-06, paused for the owner**
+Origin: research §3.3 (Progent monotonic confinement, CaMeL), §3.4 (AgentSpec: human-owned rules). Primary source re-fetched for the ADR: Progent v3 HTML §4.1–4.2 (forbid-before-allow; narrowing vs expansion).
+- [x] Inspected `safety/tiers.py` (`check_argv` 133–175, `_DANGEROUS_PROGRAMS`, blocked patterns, `--` token rule), the three call sites (`core/orchestrator.py` 224 / 345 / 536), `_undo_payload` 753 (no playbook id, no params), `_rebuild_undo_steps` 798, `_revalidate_undo_step` 855, `planner/catalog_common.py::clean_arg`, `integrity.default_scope()` (dirs glob `*.py`/`*.json`; charters use `.state` to stay outside), `safety/charter.py` JSON conventions, `cli/mcp_server.py::_orchestrator` (fresh per call), params keys by running `match()` on the T1/T2 catalogue.
+- [x] ADR-0030 drafted: D1 JSON policy (rules bind to **params** by playbook id; `deny_regex` / `allow_prefixes` / `allow_regex`; **rules can only refuse**; no tier field, no consent field, no input rewriting); D2 one enforcement point between `build()` and `check_argv` at the three existing sites, mtime/size-cached load; D3 fail closed **per named playbook** (T0 keeps running — 38/38 T0 playbooks `requires_root=False`, verified), never system-wide, never wider; D4 `jarvis policy lint|show|explain` + one `doctor` line + additive `jarvis_status` key, no new MCP tool; D5 tests incl. M3 0-escapes with permissive and deny-all policy files; D6 non-goals; failure-mode table.
+- [ ] **Owner decides D-A** storage: A1 integrity-scoped (tamper-evident, re-baseline to edit) / A2 operational (frictionless, removal invisible) / A3 both with a lint hint (my recommendation).
+- [ ] **Owner decides D-B**: `plan` B1 first-refusal / B2 list all (rec. B2); `undo` U1 skip / U2 argv-only subset / U3 add `playbook_id`+`params` to the undo artefact additively, U1 for legacy (rec. U3+U1 — touches a persisted format, hence owner's call).
+- [ ] **Owner confirms D-C**: ship no rules; example file + README section; packaging never installs it.
+- [ ] Owner accepts → implement `safety/argpolicy.py` + orchestrator hooks + CLI + tests; bump 1.22.0; docs; TASKS tick with Verified / Not verified / Limits.
+- Acceptance: M3 fault suite still 0 escapes; new negative tests; no playbook behaviour changes without a rule present; refusal text names the rule id and reason.
+- Verification plan: unit + fault suite + full gate; `jarvis policy lint|explain` on the three example rules; mutation checks (allow-before-deny swap, `realpath` dropped, `re.match` for `re.search`).
 - Sandbox limits: none.
 
 ### B-C4 · Environment signals as briefing inputs (propose-only) — *OWNER-Q* (M)

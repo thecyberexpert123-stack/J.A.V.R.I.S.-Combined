@@ -31,6 +31,19 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
+### Proposed — ADR-0030 owner-authored, narrowing-only argument policy (2026-09-06; ADR only, no code)
+- `docs/adr/0030-owner-argument-policy.md`: one owner-written JSON file of rules that can
+  **only refuse** (`deny_regex` / `allow_prefixes` / `allow_regex` over playbook *params*,
+  bound to playbook ids), evaluated once between `build()` and `check_argv` at the three
+  existing orchestrator sites; absent file = today byte-for-byte; malformed file fails
+  **closed per named playbook** (T0 keeps running — all 38 T0 playbooks are `requires_root=False`,
+  verified in `planner/inspect_cmds.py`); `jarvis policy lint|show|explain`; one `doctor`
+  line; one additive `jarvis_status` key. Grounded in Progent (arXiv:2504.11703 v3, §4.1–4.2
+  fetched: forbid-before-allow, monotonic confinement) and AgentSpec's 70.96 % recall for
+  generated rules (rules stay human-owned). **Paused for the owner:** D-A storage
+  (integrity-scoped / operational / both), D-B `plan` and `undo` semantics (undo artefacts
+  carry no playbook id or params today — U3 would add them additively), D-C ship-empty default.
+
 ### Added — doorway supervision + opt-in brief confinement (2026-09-06, ADR-0029 implemented)
 - **`src/jarvis/system/sdnotify.py`** (stdlib): `READY=1`, `STATUS=`, `WATCHDOG=1`, `STOPPING=1`
   over the `$NOTIFY_SOCKET` datagram socket (abstract `@` names handled); ping cadence = half
