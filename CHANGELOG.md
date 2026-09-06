@@ -52,17 +52,20 @@ repository is not versioned independently; the sub-projects are.
   break `sudo -n`, so only the never-escalating brief unit can be confined
   (measured 9.6 → 2.0); the doorway gets supervision, not confinement. Owner
   accepted D1+D2 and D3 as opt-in (`TASKS.md` §D7/§D8).
-- **Sequence item C3 — implemented** (2026-09-06, kernel; ships in 1.21.0): stdlib
+- **Sequence item C3 — implemented** (2026-09-06, kernel; ships in 1.22.0 together with C1): stdlib
   `sd_notify` client, `jarvis-serve.service` now `Type=notify` + `WatchdogSec=30`
   (hung loop restarted within ~32 s; inert when run by hand), `jarvis brief
   install --harden` opt-in confinement for the never-escalating brief unit;
   30 new tests, kernel suite 904 passed. GUI untouched (`bridge/resident.py`
   only polls `/v1/health`). Live watchdog restart still to be observed on the
   owner's machine.
-- **Sequence item C1 — ADR-0030 drafted, paused** (2026-09-06, kernel docs only):
-  owner-authored, narrowing-only argument policy over playbook params; storage
-  (integrity-scoped or operational) and `plan`/`undo` semantics are the owner's
-  decisions before any code.
+- **Sequence item C1 — ADR-0030 drafted, paused, then accepted and implemented**
+  (2026-09-06, kernel **1.22.0**): owner-authored, narrowing-only argument policy over
+  playbook params (`jarvis policy lint|show|explain|example`); owner chose A3
+  (integrity-scoped + lint hint), B2 (plans list every refusing part), U3+U1 (undo
+  artefacts carry `origins`, legacy ones skip), ship-empty. 40 new tests, kernel suite
+  941 passed, M3 fault gate 0 escapes under no / permissive / deny-all policy. GUI
+  untouched; `jarvis_status` gains one additive key the HUD may ignore.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the

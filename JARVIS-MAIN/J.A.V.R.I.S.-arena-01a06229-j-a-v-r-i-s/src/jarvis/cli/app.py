@@ -37,6 +37,7 @@ from jarvis.providers.base import FailureKind, ProviderError
 from jarvis.providers.breaker import ProviderBreaker, default_breaker_path
 from jarvis.providers.router import NO_AI_ENV, plan_routing
 from jarvis.safety.approval import ApprovalPolicy, ApprovalRefused
+from jarvis.safety.argpolicy import load_policy
 from jarvis.safety.disclosure import blast_radius
 from jarvis.safety.integrity import issue_canary
 from jarvis.safety.selftest import run_battery
@@ -144,10 +145,21 @@ def _build_orchestrator(args: argparse.Namespace) -> tuple[Orchestrator, Journal
     ), journal
 
 
+def _argument_policy_view() -> dict[str, object]:
+    """ADR-0030 D4: the additive `argument_policy` key for status/MCP payloads."""
+    try:
+        policy = load_policy()
+    except Exception as exc:  # status must never crash
+        return {"state": "error", "rules": 0, "detail": str(exc)}
+    return {"state": policy.state, "rules": len(policy.rules)}
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
     profile = build_profile()
     if args.json:
-        print(json.dumps(profile.to_dict(), indent=2))
+        print(
+            json.dumps({**profile.to_dict(), "argument_policy": _argument_policy_view()}, indent=2)
+        )
         return 0
     pm = profile.package_manager.value if profile.package_manager else "none found"
     print(
@@ -168,6 +180,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
     except Exception as exc:  # status must never crash
         llm_line = f"probe failed: {exc}"
     print(f"llm planning    : {llm_line}")
+    policy_view = _argument_policy_view()
+    print(f"argument policy : {policy_view['state']} ({policy_view['rules']} rule/s; ADR-0030)")
     try:
         views = _breaker().views()
         if views:
@@ -1254,6 +1268,96 @@ def _cmd_grow(args: argparse.Namespace) -> int:
         return 2
 
 
+def _cmd_policy(args: argparse.Namespace) -> int:
+    """ADR-0030 D4: lint / show / explain the owner's argument policy (never executes)."""
+    from jarvis.safety import integrity
+    from jarvis.safety.argpolicy import EXAMPLE_POLICY, policy_path
+
+    command = getattr(args, "policy_command", None) or "show"
+    path = Path(args.path).expanduser() if getattr(args, "path", None) else policy_path()
+    if command == "example":
+        print(json.dumps(EXAMPLE_POLICY, indent=2))
+        return 0
+    policy = load_policy(path=path)
+    if command == "lint":
+        print(f"policy file : {path} ({policy.state})")
+        for finding in policy.findings:
+            print(f"  {finding}")
+        if policy.state == "ok":
+            print(
+                f"ok: {len(policy.rules)} rule(s) bind to "
+                f"{len(policy.bound_playbooks())} playbook(s); rules can only refuse"
+            )
+        elif policy.state == "absent":
+            print("no policy file — every playbook behaves exactly as without ADR-0030")
+            print("write one with:  jarvis policy example > " + str(path))
+        else:
+            print(policy.summary())
+        # A3: the file is integrity-scoped; say so once, precisely.
+        baseline = integrity.default_baseline_path()
+        if path == policy_path() and baseline.is_file() and policy.state != "absent":
+            report = integrity.verify(baseline)
+            stale = [row for row in report.drift if row.path == path]
+            if stale:
+                print(
+                    f"note: {path.name} is {stale[0].status} relative to the integrity baseline — "
+                    "when you are done editing, run: jarvis doctor --write-baseline"
+                )
+        return 0 if policy.state in ("ok", "absent") else 1
+    if command == "show":
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "path": str(path),
+                        "state": policy.state,
+                        "rules": [
+                            {
+                                "id": r.id,
+                                "playbooks": list(r.playbooks),
+                                "argument": "|".join(r.keys),
+                                "effect": r.effect,
+                                "value": r.pattern.pattern if r.pattern else list(r.prefixes),
+                                "reason": r.reason,
+                            }
+                            for r in policy.rules
+                        ],
+                        "findings": [str(f) for f in policy.findings],
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+        print(f"policy file : {path} ({policy.summary()})")
+        for rule in policy.rules:
+            value = rule.pattern.pattern if rule.pattern else ", ".join(rule.prefixes)
+            print(f"  {rule.id:28s} {', '.join(rule.playbooks):32s} {'|'.join(rule.keys)}")
+            print(f"  {'':28s} {rule.effect} = {value}")
+            if rule.reason:
+                print(f"  {'':28s} reason: {rule.reason}")
+        return 0
+    # explain: match + build + policy check; nothing executed, nothing journaled
+    from jarvis.planner.playbooks import match_intent
+    from jarvis.safety.tiers import SafetyRefusal
+
+    matched = match_intent(args.request)
+    if matched is None:
+        print("no playbook matches this request (nothing to check)")
+        return 1
+    playbook, params = matched
+    print(f"playbook : {playbook.id} (T{int(playbook.tier)})")
+    print(f"params   : {json.dumps(params, sort_keys=True)}")
+    rules = policy.rules_for(playbook.id)
+    print(f"rules    : {', '.join(r.id for r in rules) if rules else 'none bind to this playbook'}")
+    try:
+        policy.check(playbook.id, params, tier=int(playbook.tier))
+    except SafetyRefusal as exc:
+        print(f"verdict  : REFUSED — {exc}")
+        return 1
+    print("verdict  : allowed by the argument policy (tiers, consent and check_argv still apply)")
+    return 0
+
+
 def _cmd_doctor(args: argparse.Namespace) -> int:
     """Policy-state integrity: baseline, drift verification, canaries (M9c)."""
     from jarvis.safety import integrity
@@ -1288,7 +1392,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     # ADR-0028: the task journal's evidence chain is part of the same verdict.
     chain_report = Journal(default_db_path()).verify_chain()
     chain_broken = not bool(chain_report["ok"])
-    clean = report.clean and not poisoned and not chain_broken
+    # ADR-0030: a malformed argument policy is a verdict item too (it is failing
+    # closed for what it names; the owner should know before the next refusal).
+    arg_policy = load_policy()
+    policy_broken = arg_policy.state == "malformed"
+    clean = report.clean and not poisoned and not chain_broken and not policy_broken
     if args.json:
         print(
             json.dumps(
@@ -1303,6 +1411,12 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
                     ],
                     "context_store": context_report,
                     "journal_chain": chain_report,
+                    "argument_policy": {
+                        "state": arg_policy.state,
+                        "rules": len(arg_policy.rules),
+                        "playbooks": sorted(arg_policy.bound_playbooks()),
+                        "errors": [str(f) for f in arg_policy.errors],
+                    },
                 },
                 indent=2,
             )
@@ -1320,6 +1434,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         f" {chain_report['legacy']} legacy)"
         + (f" — {chain_report['detail']}" if chain_broken else "")
     )
+    print(f"argument policy: {arg_policy.summary()}")
     try:
         doctor_routing = plan_routing()
         doctor_views = _breaker().views()
@@ -2121,6 +2236,30 @@ def build_parser() -> argparse.ArgumentParser:
         "status", help="local + remote backends, breakers, precedence"
     )
     p_ai_status.set_defaults(func=_cmd_ai, ai_command="status")
+
+    p_policy = sub.add_parser(
+        "policy",
+        help="owner-authored, narrowing-only argument policy: lint, show, explain (ADR-0030)",
+    )
+    p_policy_sub = p_policy.add_subparsers(dest="policy_command")
+    p_policy_lint = p_policy_sub.add_parser(
+        "lint", help="validate the policy file (schema, playbook ids, regexes); exit 1 on errors"
+    )
+    p_policy_lint.add_argument("path", nargs="?", help="a file to lint instead of the live one")
+    p_policy_lint.set_defaults(func=_cmd_policy, policy_command="lint")
+    p_policy_show = p_policy_sub.add_parser("show", help="print the effective rules")
+    p_policy_show.add_argument("path", nargs="?", help="a file to show instead of the live one")
+    p_policy_show.set_defaults(func=_cmd_policy, policy_command="show")
+    p_policy_explain = p_policy_sub.add_parser(
+        "explain", help="dry-run one request against the policy; never executes or journals"
+    )
+    p_policy_explain.add_argument("request", help="the natural-language request to test")
+    p_policy_explain.add_argument("--path", help="a policy file to use instead of the live one")
+    p_policy_explain.set_defaults(func=_cmd_policy, policy_command="explain")
+    p_policy_sub.add_parser("example", help="print the example policy (three rules)").set_defaults(
+        func=_cmd_policy, policy_command="example"
+    )
+    p_policy.set_defaults(func=_cmd_policy, policy_command="show")
 
     p_doctor = sub.add_parser(
         "doctor",

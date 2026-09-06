@@ -474,3 +474,28 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   times in `inspect_cmds.py`) and by building 31 of 38 T0 playbooks from test/eval phrases.
   **Not verified:** nothing to run yet — no code in this entry.
 
+## 2026-09-06 · C1 implemented — the policy that can only say no
+
+- **The oracle for "absent = identical" is the whole suite, not a new test.** Wiring the
+  policy into the orchestrator and running the existing 904 tests with no policy file present
+  is the strongest available proof that today's behaviour is untouched; the new tests then only
+  need to cover what the file *adds*. Worth remembering for any future "inert by default" layer.
+- **A rule that can only refuse makes precedence trivial — test it anyway.** With every effect
+  being a refusal there is no allow-overrides-deny bug to have, but a future "return early on
+  allow match" refactor would reintroduce one silently. The two-order test exists so that
+  refactor fails loudly; mutation 3 confirmed it does.
+- **The protected set got in the way of the first test phrase.** `remove linux-image-generic`
+  is already refused by the code-level protected set, so it could not show the *owner's* rule
+  firing; `uninstall grub` (not protected in code, denied by the example rule) does. The
+  example policy deliberately overlaps the code set — belt and braces is the point — but tests
+  must pick values where only the new layer speaks.
+- **`match_intent` surprised me twice**: `remove linux-image-6.8-generic` matched `fs.remove`
+  (a path), not `pkg.remove`; the example rule's phrase had to be checked by running the
+  matcher, not by reading it. Verify phrasing empirically before putting it in a doc.
+- **Deny-all is a legitimate configuration and the fault gate must survive it.** It does (0
+  escapes); the one pytest failure under deny-all is `dry_run` being refused *before* the
+  dry-run — exactly what a validator refusal does today (`delete the file /etc/shadow`
+  → refused, no dry-run). Consistent, and recorded rather than special-cased.
+- **Verified:** gate clean; 941 passed; 40 new tests; 6 mutations caught; M3 0 escapes ×3
+  configurations; CLI round-trip by running the verbs. **Not verified:** nothing outstanding.
+

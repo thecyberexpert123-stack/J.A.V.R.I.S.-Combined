@@ -1,11 +1,16 @@
 # ADR-0030: Owner-authored, narrowing-only argument policy over playbook argv
 
-- **Status:** **Proposed — awaiting owner decision** (drafted 2026-09-06; owner-directed "continue"
-  sequence, `TASKS.md` item B-C1, gated as OWNER-Q in decision D4 — *security-sensitive*; origin:
-  deep research II `docs/RESEARCH-agent-construction-and-future-tech-2026.md` §3.3 (Progent,
-  CaMeL), §3.4 (AgentSpec), candidate C1, owner question 1). **Nothing in this ADR is implemented.**
-  Two decisions are the owner's (D-A storage, D-B `plan`/`undo` behaviour); the rest is the
-  design I would build once those are answered.
+- **Status:** **Accepted and implemented 2026-09-06** (drafted, decided and shipped the same
+  day; owner-directed "continue" sequence, `TASKS.md` item B-C1, gated as OWNER-Q in decision
+  D4 — *security-sensitive*; origin: deep research II
+  `docs/RESEARCH-agent-construction-and-future-tech-2026.md` §3.3 (Progent, CaMeL), §3.4
+  (AgentSpec), candidate C1, owner question 1). **Owner answers (`TASKS.md` §D9–§D11):
+  D-A = A3** (integrity-scoped + lint hint), **D-B = B2** for `plan` and **U3 + U1** for
+  `undo`, **D-C = ship empty** ("do all"). Implemented in `safety/argpolicy.py`,
+  `core/orchestrator.py` (three sites + `origins` in undo artefacts), `cli/app.py`
+  (`policy lint|show|explain|example`, `doctor`/`status` lines), `cli/mcp_server.py`
+  (additive `argument_policy` key), `safety/integrity.py` (scope), `tests/test_argpolicy.py`
+  (40 tests). Kernel **1.22.0**.
 
 - **Context — what the safety layer can and cannot say today (VERIFIED in this tree).**
   Every argv JARVIS executes passes `safety/tiers.py::check_argv` at three sites in
@@ -49,7 +54,7 @@
   playbooks it names — but not for the whole system (see D3), because "policy file has a typo,
   so nothing runs" would push the owner to delete the file, which is the worst outcome.
 
-## Decision (proposed)
+## Decision
 
 ### D1 — Policy document: one JSON file, owner-written, rules that only refuse
 
@@ -194,7 +199,7 @@ narrowing iff it adds rules or tightens regexes, which `jarvis policy lint --dif
 textually later); rules over *step argv* (the owner would have to know package-manager
 spellings); any change to tiers, consent, or the runner.
 
-## Owner decisions requested (this ADR pauses here)
+## Owner decisions (asked and answered 2026-09-06 — see Status; kept verbatim for the record)
 
 **D-A. Where does the policy file live — integrity-scoped or operational?**
 

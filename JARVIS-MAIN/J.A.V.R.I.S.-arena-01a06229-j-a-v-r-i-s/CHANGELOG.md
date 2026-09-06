@@ -31,18 +31,57 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
-### Proposed — ADR-0030 owner-authored, narrowing-only argument policy (2026-09-06; ADR only, no code)
-- `docs/adr/0030-owner-argument-policy.md`: one owner-written JSON file of rules that can
-  **only refuse** (`deny_regex` / `allow_prefixes` / `allow_regex` over playbook *params*,
-  bound to playbook ids), evaluated once between `build()` and `check_argv` at the three
-  existing orchestrator sites; absent file = today byte-for-byte; malformed file fails
-  **closed per named playbook** (T0 keeps running — all 38 T0 playbooks are `requires_root=False`,
-  verified in `planner/inspect_cmds.py`); `jarvis policy lint|show|explain`; one `doctor`
-  line; one additive `jarvis_status` key. Grounded in Progent (arXiv:2504.11703 v3, §4.1–4.2
-  fetched: forbid-before-allow, monotonic confinement) and AgentSpec's 70.96 % recall for
-  generated rules (rules stay human-owned). **Paused for the owner:** D-A storage
-  (integrity-scoped / operational / both), D-B `plan` and `undo` semantics (undo artefacts
-  carry no playbook id or params today — U3 would add them additively), D-C ship-empty default.
+_Nothing yet._
+
+## [1.22.0] - 2026-09-06 — owner argument policy (ADR-0030) + supervised doorway / `brief --harden` (ADR-0029)
+
+### Added — owner-authored, narrowing-only argument policy (2026-09-06, ADR-0030 implemented)
+- **`src/jarvis/safety/argpolicy.py`** (stdlib: `re`, `json`, `os.path`): one JSON file
+  `state_dir()/policy/argument-policy.json` of rules bound to playbook ids and a *params* key
+  (`names[]`, `path|src|dst`, `unit`, …; `"*"` = every playbook with that key) with exactly
+  one effect — `deny_regex` (`re.search`), `allow_prefixes` (values **resolved** with
+  `expanduser` + `resolve(strict=False)` first, so `~/Downloads/../.ssh` is judged as
+  `~/.ssh`), `allow_regex` — plus a one-line `reason`. **Rules can only refuse**: the schema
+  has no tier, consent or rewrite field (unknown fields are lint errors), an allow-style rule
+  refuses when unmatched and can never override a deny (tested in both orders).
+- **Enforcement (D2)** at the three existing `check_argv` sites in `core/orchestrator.py`:
+  single playbook (refusal = same non-journaled path as a static-check refusal, nothing
+  executed); composite `plan` — **owner decision B2**: every part is checked and *all*
+  refusing parts are listed; `undo` — **owner decision U3 + U1**: undo artefacts now carry an
+  additive `origins: [{playbook_id, params}]` key (single and composite), the policy is
+  re-applied to it exactly as for a forward run, artefacts without the key (pre-1.22) skip
+  the policy rather than be guessed at, tampered `origins` are refused. Loaded through an
+  mtime/size cache so a long-lived doorway sees edits without restart.
+- **Failure semantics (D3)**: absent file = empty policy = today byte-for-byte (the existing
+  904-test suite is the oracle); invalid JSON / top-level schema error → every **T1+**
+  playbook refused, T0 keeps running (38/38 T0 playbooks are `requires_root=False`); one
+  broken rule (bad regex, unknown playbook id, duplicate id, nested quantifier, > 200 chars)
+  → only the playbooks *that rule names* are refused, valid rules keep binding; a
+  never-produced argument is a lint **warning** (rule kept, inert).
+- **Storage — owner decision A3**: `state_dir()/policy` is now in `integrity.default_scope()`
+  (the `*.json` glob picks the file up), so a silently deleted rule is DRIFT; `jarvis policy
+  lint` prints the re-baseline hint when the file differs from the baseline.
+- **CLI (D4, additive)**: `jarvis policy lint [PATH]` (exit 1 on errors) · `show [--json]` ·
+  `explain "<request>"` (match + policy check; never executes or journals; exit 1 when
+  refused) · `example` (the three sample rules). `jarvis doctor` gains `argument policy: …`
+  (JSON key `argument_policy`; a malformed file makes the verdict exit 1). `jarvis status`
+  and MCP `jarvis_status` gain one additive `argument_policy: {state, rules}` key — every
+  other key of the fingerprint payload is unchanged (asserted).
+- **Tests (`tests/test_argpolicy.py`, +40)**: schema accept/reject table (11 cases), the three
+  effects, list arguments, multi-key rules, path traversal, `"*"`, deny-wins in both orders,
+  fail-closed per scope, T0 continues under a broken file, cache reload, all three
+  orchestrator sites, origins recorded for single and composite runs, legacy artefact skips,
+  tampered origins refused, integrity scope membership, CLI round-trip, stale-baseline hint,
+  `doctor`/`status`/MCP payloads. **Six mutations** each caught by the intended test
+  (`re.match` for `re.search`; `realpath` dropped; allow-match terminating evaluation; broken
+  rule failing open; undo origins never checked; B1 instead of B2).
+- **Verified**: ruff / `ruff format --check` / mypy clean; `pytest -m "not live"` **941
+  passed**; **M3 fault suite 0 escapes** with no policy, with a permissive policy naming all
+  20 T1/T2 playbooks (`allow_regex: ".*"`), and with a deny-all policy (34 vectors, 0 escapes
+  — one *test* fails there because the deny-all file refuses `install htop` before its
+  dry-run, which is the policy working; the gate counts escapes). `jarvis policy lint` on
+  the example file: `ok: 3 rule(s) bind to 6 playbook(s)`. **Not verified**: nothing
+  outstanding — this item has no sandbox limits.
 
 ### Added — doorway supervision + opt-in brief confinement (2026-09-06, ADR-0029 implemented)
 - **`src/jarvis/system/sdnotify.py`** (stdlib): `READY=1`, `STATUS=`, `WATCHDOG=1`, `STOPPING=1`

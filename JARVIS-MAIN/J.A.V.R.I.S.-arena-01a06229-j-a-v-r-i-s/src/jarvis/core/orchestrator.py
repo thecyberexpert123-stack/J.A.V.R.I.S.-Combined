@@ -11,7 +11,7 @@ import json
 import re
 import signal
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -28,6 +28,7 @@ from jarvis.planner.models import (
 )
 from jarvis.planner.playbooks import PLAYBOOKS, Playbook, match_intent
 from jarvis.safety.approval import ApprovalPolicy, ApprovalRefused
+from jarvis.safety.argpolicy import PolicyCache
 from jarvis.safety.paths import classify_for_edit
 from jarvis.safety.snapshots import SnapshotManager
 from jarvis.safety.tiers import SafetyRefusal, Tier, check_argv, check_removal_allowed
@@ -114,6 +115,7 @@ class Orchestrator:
         snapshot_manager: SnapshotManager | None = None,
         auto_rollback: bool = False,
         cautious_ok: bool = False,
+        argument_policy: PolicyCache | None = None,
     ) -> None:
         self._profile = profile
         self._journal = journal
@@ -122,6 +124,9 @@ class Orchestrator:
         self._echo = echo
         self._auto_rollback = auto_rollback
         self._cautious_ok = cautious_ok
+        # ADR-0030: owner-authored, narrowing-only argument policy. Loaded per
+        # call through an mtime/size cache; absent file = no rules = today.
+        self._argument_policy = argument_policy or PolicyCache()
         self._snapshots = snapshot_manager or SnapshotManager(runner)
         self._interrupted = False
         self._prev_handlers: dict[int, object] = {}
@@ -219,6 +224,17 @@ class Orchestrator:
         except SafetyRefusal as exc:
             return self._refused_no_journal(playbook, str(exc))
 
+        # ADR-0030 D2: the owner's rules see the params the playbook matched,
+        # before the argv-level static check; rules can only refuse.
+        try:
+            self._argument_policy.current().check(
+                playbook.id,
+                params,
+                tier=max((int(s.tier) for s in steps), default=int(playbook.tier)),
+            )
+        except SafetyRefusal as exc:
+            return self._refused_no_journal(playbook, str(exc))
+
         for step in steps:
             try:
                 check_argv(step.argv)
@@ -273,7 +289,7 @@ class Orchestrator:
             and undo_plan.status is UndoStatus.AVAILABLE
             and status in (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.INTERRUPTED)
         ):
-            self._journal.store_undo(task_id, _undo_payload(undo_plan))
+            self._journal.store_undo(task_id, _undo_payload(undo_plan, [(playbook.id, params)]))
         rolled_back, rollback_task_id = False, ""
         if (
             self._auto_rollback
@@ -340,6 +356,21 @@ class Orchestrator:
                 )
             slices.append((len(all_steps), len(all_steps) + len(steps)))
             all_steps.extend(steps)
+        # ADR-0030 D2 / owner decision B2: check every part, report all refusals.
+        policy = self._argument_policy.current()
+        policy_refusals: list[str] = []
+        for idx, ((playbook, params), (lo, hi)) in enumerate(zip(parts, slices, strict=True), 1):
+            part_tier = max((int(s.tier) for s in all_steps[lo:hi]), default=int(playbook.tier))
+            try:
+                policy.check(playbook.id, params, tier=part_tier)
+            except SafetyRefusal as exc:
+                policy_refusals.append(f"plan part {idx} ({playbook.id}): {exc}")
+        if policy_refusals:
+            return TaskOutcome(
+                playbook_id="plan",
+                status=TaskStatus.REFUSED,
+                error="; ".join(policy_refusals),
+            )
         for step in all_steps:
             try:
                 check_argv(step.argv)
@@ -460,7 +491,9 @@ class Orchestrator:
             and undo_plan.status is UndoStatus.AVAILABLE
             and terminal in (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.INTERRUPTED)
         ):
-            self._journal.store_undo(task_id, _undo_payload(undo_plan))
+            self._journal.store_undo(
+                task_id, _undo_payload(undo_plan, [(pb.id, pr) for pb, pr in parts])
+            )
         rolled_back, rollback_task_id = False, ""
         if (
             self._auto_rollback
@@ -530,6 +563,18 @@ class Orchestrator:
                 playbook_id="undo",
                 status=TaskStatus.REFUSED,
                 error=f"undo artifact failed validation: {exc}",
+            )
+        # ADR-0030 owner decision U3+U1: artefacts written since 1.22 carry the
+        # originating playbook(s) and params ("origins"); the owner's rules are
+        # re-applied to them exactly as for a forward run. Older artefacts have
+        # no origins and skip the policy (never guess what they were).
+        try:
+            self._check_undo_origins(artifact["payload"], tier)
+        except SafetyRefusal as exc:
+            return TaskOutcome(
+                playbook_id="undo",
+                status=TaskStatus.REFUSED,
+                error=f"undo refused by argument policy: {exc}",
             )
         for step in steps:
             try:
@@ -685,6 +730,25 @@ class Orchestrator:
             checks=tuple(results),
         )
 
+    def _check_undo_origins(self, payload: object, tier: int) -> None:
+        """Apply the argument policy to an undo artefact's recorded origins (ADR-0030 U3)."""
+        if not isinstance(payload, dict):
+            return
+        origins = payload.get("origins")
+        if origins is None:
+            return  # legacy artefact (pre-1.22): U1, policy does not apply
+        if not isinstance(origins, list):
+            raise SafetyRefusal("undo artifact origins field is not a list")
+        policy = self._argument_policy.current()
+        for origin in origins:
+            if not isinstance(origin, dict):
+                raise SafetyRefusal("undo artifact origin is not an object")
+            playbook_id = origin.get("playbook_id")
+            params = origin.get("params")
+            if not isinstance(playbook_id, str) or not isinstance(params, dict):
+                raise SafetyRefusal("undo artifact origin is malformed")
+            policy.check(playbook_id, params, tier=tier)
+
     def _refused_no_journal(self, playbook: Playbook, reason: str) -> TaskOutcome:
         return TaskOutcome(playbook_id=playbook.id, status=TaskStatus.REFUSED, error=reason)
 
@@ -750,8 +814,13 @@ def _step_summary(seq: int, step: PlannedStep) -> dict[str, object]:
     }
 
 
-def _undo_payload(plan: UndoPlan) -> dict[str, object]:
-    return {
+def _undo_payload(
+    plan: UndoPlan, origins: Sequence[tuple[str, Mapping[str, object]]] = ()
+) -> dict[str, object]:
+    """Serialise an undo plan. ``origins`` (ADR-0030 U3) records which playbook(s)
+    and params produced the forward run so `undo` can be policy-checked like a
+    forward run; the key is additive — readers treat its absence as legacy."""
+    payload: dict[str, object] = {
         "reason": plan.reason,
         "tier": int(max(step.tier for step in plan.steps)) if plan.steps else int(Tier.T1),
         "steps": [
@@ -769,6 +838,11 @@ def _undo_payload(plan: UndoPlan) -> dict[str, object]:
             for c in plan.verify_checks
         ],
     }
+    if origins:
+        payload["origins"] = [
+            {"playbook_id": playbook_id, "params": dict(params)} for playbook_id, params in origins
+        ]
+    return payload
 
 
 def _composite_undo(undos: Sequence[UndoPlan], labels: Sequence[str]) -> UndoPlan:

@@ -113,3 +113,16 @@ across both halves: user-manager sandboxing directives and `sudo -n` are
 mutually exclusive — anything in this tree that may escalate cannot be
 confined by unit directives alone.
 
+## 2026-09-06 · Sequence item C1 (cross-cutting note)
+
+Kernel-only again, with one seam the HUD should know about: the MCP
+`jarvis_status` payload and `jarvis status --json` now carry an additive
+`argument_policy: {state, rules}` key. The GUI's status panel renders the
+fingerprint fields it knows and ignores unknown keys (checked: no schema
+assertion on the payload), so nothing changes there today; a later HUD item
+could surface `state: malformed` as a warning badge, because that state means
+the kernel is refusing T1+ playbooks until `jarvis policy lint` passes. Refusals
+from the policy arrive through the same `status: refused` + `error` shape as
+every other refusal, so the HUD's existing refusal rendering shows the rule id
+and the owner's reason verbatim.
+

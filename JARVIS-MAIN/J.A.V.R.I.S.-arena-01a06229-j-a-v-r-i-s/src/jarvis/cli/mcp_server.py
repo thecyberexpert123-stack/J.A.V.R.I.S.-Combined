@@ -310,7 +310,10 @@ def _build_orchestrator(allow: bool) -> Orchestrator:
 
 
 def _tool_status(_args: dict[str, object]) -> tuple[object, bool]:
-    return build_profile().to_dict(), False
+    # ADR-0030 D4: one additive key; the fingerprint payload is otherwise unchanged.
+    from jarvis.cli.app import _argument_policy_view
+
+    return {**build_profile().to_dict(), "argument_policy": _argument_policy_view()}, False
 
 
 def _tool_facts(args: dict[str, object]) -> tuple[object, bool]:

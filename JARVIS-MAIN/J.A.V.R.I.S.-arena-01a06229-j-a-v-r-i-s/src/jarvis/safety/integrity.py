@@ -77,7 +77,15 @@ def default_scope() -> IntegrityScope:
             root / "planner" / "playbooks.py",
             state_dir() / "cautious",
         ),
-        dirs=(root / "safety", state_dir() / "charters", state_dir() / "skills"),
+        # ADR-0030 (owner decision A3): the argument policy is tamper-evident —
+        # silent removal of a rule is DRIFT; `jarvis policy lint` reminds the
+        # owner to re-baseline after a deliberate edit.
+        dirs=(
+            root / "safety",
+            state_dir() / "charters",
+            state_dir() / "skills",
+            state_dir() / "policy",
+        ),
     )
 
 
