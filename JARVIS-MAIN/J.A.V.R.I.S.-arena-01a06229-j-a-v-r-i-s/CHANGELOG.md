@@ -31,20 +31,78 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
-### Proposed — ADR-0031 environment signals as briefing inputs (2026-09-06; ADR only, no code)
-- `docs/adr/0031-environment-signals-briefing-inputs.md`: six facts for the propose-only
-  briefing — battery discharging ≤ N % (sysfs, same filter as the HUD's `read_battery()`), no
-  network link (sysfs), metered connection (NetworkManager `Metered` 1/3), sleep or shutdown
-  imminent and session locked (login1 `PreparingForSleep` / `PreparingForShutdown` /
-  `LockedHint`) as **holds** that drop the desktop knock, slept-since-last-run
-  (`/sys/power/suspend_stats/success`) as ledger context. Access: `--signals off|sysfs|bus`
-  (default `off` = today byte-for-byte); `sysfs` stays zero-subprocess; `bus` = one fixed-argv
-  `busctl --system --auto-start=no --timeout=2 call … org.freedesktop.DBus.Properties Get`
-  per property, never activating a service. No listener, no inotify, no `Inhibit()`, no path to
-  execution (ADR-0017 D3, ADR-0021 D1 intact). Interface names verified at source (logind,
-  UPower, NetworkManager, kernel sysfs ABI, `busctl(1)`); UPower verified but not used.
-  **Paused for the owner:** Q-A signal set + 20 % threshold, Q-B default mode, Q-C no listener,
-  Q-D hold semantics. Live sensing is not verifiable in the sandbox (no bus, battery or suspend).
+_Nothing yet._
+
+## [1.23.0] - 2026-09-06 — environment signals as briefing inputs + opt-in signal listener (ADR-0031, hybrid)
+
+Owner-accepted hybrid of the 2026-09-06 proposal (decision D13 in the combined-repo `TASKS.md`):
+both sensing paths in the scheduled briefing, an opt-in resident listener in its own unit, and
+D-Bus through a stdlib client — **zero subprocesses in every mode**.
+
+### Added
+- `src/jarvis/brief/signals.py` — `sense(mode)` for `--signals off|sysfs|bus` (**default
+  `sysfs`**). `sysfs`: battery (`type == Battery`, `scope != Device`, clamp, documented `status`
+  set — the HUD's `read_battery()` filter plus the kernel's peripheral marker), link
+  (`operstate == up`, or `unknown` + `carrier == 1`; loopback excluded), suspend cycles
+  (`suspend_stats/success` delta keyed by `boot_id`). `bus`: adds NetworkManager `Metered`
+  (1/3 → metered, 2/4 → not, 0 → not sensed) and `Connectivity`, login1 `PreparingForSleep`,
+  `PreparingForShutdown`, `IdleHint`, and the caller-relative session's `LockedHint`. Facts become
+  lines (S1–S3), **holds** (S4/S5: the desktop knock is withheld; `latest.md` and the ledger are
+  still written) or context (S6, idle). `null` always means *not sensed*, never *normal*.
+- `src/jarvis/system/dbus_client.py` — a read-only D-Bus wire client over the AF_UNIX socket:
+  address parsing, SASL `EXTERNAL`, the full marshalling codec, `Hello`, `Properties.Get`,
+  `AddMatch`, signal reception; `NO_AUTO_START` on every call (sensing can never activate a
+  service), `ALLOW_INTERACTIVE_AUTHORIZATION` never; strict validation with disconnect on any
+  malformed frame; 1 MiB cap. Public surface pinned by test to `connect / call / get_property /
+  add_match / next_signal / close / connected`. Codec verified byte-for-byte against an
+  independent implementation (jeepney 0.9.0, used only to produce the golden vectors, not a
+  dependency).
+- `src/jarvis/brief/listen.py` + `jarvis brief listen [--record-only] [--once]` — the opt-in
+  listener: subscribes (four fixed match rules) to logind `PrepareForSleep` /
+  `PrepareForShutdown`, session `LockedHint` changes and NetworkManager property changes;
+  **records** them as `{"kind": "event"}` ledger rows (≤ 120/hour) and **delivers the day's held
+  briefing once** when the hold clears (unlock, or resume with the screen unlocked), recording a
+  `{"kind": "delivery"}` row. It never composes, never executes, never calls a D-Bus method beyond
+  `Hello`/`AddMatch`/`Properties.Get` (both pinned by tests). No bus → stays up with back-off.
+- `jarvis brief install --signals off|sysfs|bus --battery-low PCT --listen [--record-only]` —
+  flags rendered into `ExecStart=` **only when non-default** (the default unit text is unchanged);
+  `--listen` writes and enables `jarvis-signals.service` (`Type=notify`, `NotifyAccess=main`,
+  `WatchdogSec=60`, `Restart=on-failure`; `--harden` applies the ADR-0029 D3 block to it too:
+  `systemd-analyze security --offline` 9.6 → 2.0). `brief uninstall` removes both units.
+- `jarvis brief [run] --signals … --battery-low …` on the command line; `brief status` gains
+  `held`, `events`, `late_deliveries`, `held_undelivered`.
+- `--json brief` and ledger `run` rows gain additive `signals` / `holds` keys (present in the row
+  only when they carry information); `markdown()` gains `context:` / `held:` lines only when
+  something was sensed / held.
+- Tests: `tests/test_dbus_client.py` (44 — golden vectors, strictness, fake-bus handshake and
+  failure modes), `tests/test_brief_signals.py` (51 — fake sysfs roots, bus mode, holds, golden
+  `off`-mode byte-identity against the v1.22.0 output, listener powers and limits, units, CLI),
+  `tests/fakebus.py` (an in-process AF_UNIX bus speaking the real protocol).
+
+### Changed
+- `src/jarvis/brief/engine.py`: `run_once(signals_mode="sysfs", battery_low=20, sysfs_root,
+  bus_address)`; `compose(signals=…)`; `Briefing` gains `holds`, `signals`, `context` (defaults
+  keep every existing constructor call valid); `decide()` preserves them; `BriefLedger` gains
+  `record_event`, `record_delivery`, `held_undelivered(now=None)`, `last_suspend`. The briefing
+  **id is unchanged unless a signal line was added** — context alone never changes it.
+  `held_undelivered` takes an injectable `now` (tests only; production uses the wall clock) so
+  the "held today" cut-off is testable on any calendar day — the first cut of this test pinned a
+  briefing at 2026-09-06 and compared it with the real date, which failed two days later.
+- The timer unit's `ExecStart=… -m jarvis brief --quiet` is unchanged; `--quiet` / `--signals` /
+  `--battery-low` are accepted on `brief` and on `brief run` alike.
+- Version 1.22.0 → **1.23.0** (pyproject, `__init__`, README, PKGBUILD, RPM spec, root README).
+
+### Verified / not verified
+- Verified (sandbox): `ruff check`, `ruff format --check`, `mypy src/jarvis` clean; non-live gate
+  **1039 passed, 11 deselected**; 13 mutation probes each break a test (drop `NO_AUTO_START`,
+  `UNKNOWN` metered → false, loopback counted, hold ignored, double delivery, deliver while locked,
+  hold on not-sensed, padding unchecked, default unit altered, type filter off, scope filter off,
+  listener imports `compose`, deliveries recorded as failed); real CLI runs of every new verb and
+  flag; `systemd-analyze security/verify` on the generated units; golden `off`-mode output equal
+  to the v1.22.0 engine's.
+- Not verified here: any live bus, battery, suspend or lock/unlock cycle (the sandbox has no
+  system bus — not installable — no user service manager, no battery). ADR-0031 lists the
+  owner-side commands; the listener stays **opt-in** until one verified delivery on real hardware.
 
 ## [1.22.0] - 2026-09-06 — owner argument policy (ADR-0030) + supervised doorway / `brief --harden` (ADR-0029)
 

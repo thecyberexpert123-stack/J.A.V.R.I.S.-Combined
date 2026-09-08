@@ -529,3 +529,51 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   sysfs paths present). **Not verified:** any live sensing; five items are marked ASSUMED in the
   ADR with the exact commands the owner can run.
 
+## 2026-09-06 · C4 implementation — the hybrid, and what writing a D-Bus client by hand teaches
+
+- **"No child processes" turned a 60-line design into a 900-line one — and it was still the
+  right call.** The owner rejected `busctl` children for sensing. The protocol has been frozen
+  since 2006 and what JARVIS needs is `Hello`, `Properties.Get`, `AddMatch` and reading signals;
+  a stdlib client costs ~900 lines and removes the one subprocess the proposal had to apologise
+  for. The rule that made it safe to write: the *only* thing the client may do with input it does
+  not understand is disconnect. No "best effort" parsing anywhere.
+- **An independent oracle, used once and thrown away, is worth more than a hundred self-
+  consistent round-trip tests.** `jeepney` was installed for ten minutes to emit eleven golden
+  frames (Hello, `Properties.Get`, a `PropertiesChanged` signal, nested dicts, empty arrays, every
+  basic type), then uninstalled. The encoder matched all eleven on the first run — but only after
+  the *decoder* caught a real bug the round-trip tests could never have seen: `frame_length()`
+  unpacked four `u32`s from a 16-byte header. A codec that only talks to itself is always right.
+- **Read the header layout twice.** The fixed header is 12 bytes; the array length that follows
+  makes 16. Off-by-one-field errors in framing code hang the connection silently (the client
+  waits for bytes that never come) rather than crashing — the honest `timed out after 2s` error
+  was the only symptom. Framing code deserves a fake peer on a real socket, not a byte-string
+  test.
+- **The man page said "convenience paths are caller-relative"; the source said how.**
+  `logind-dbus.c::get_sender_session(consult_display=true)` is what `session/auto` runs: the
+  caller's own session, else the owning user's *display* session. That is the difference between
+  a listener that has to guess a session path from `ListSessions()` and one that simply re-reads
+  `LockedHint` on `session/auto` when any session's hint changes. Ten minutes in the source
+  removed a whole heuristic.
+- **The kernel already marks peripheral batteries.** The proposal mirrored the HUD's
+  `type == Battery` filter and *assumed* a `scope` attribute existed. `hid-input.c` sets
+  `POWER_SUPPLY_SCOPE_DEVICE` for HID cells and `power_supply_sysfs.c` renders it as `Device`. A
+  mutation probe that dropped the type filter passed (the fixture's mouse sorted *after* the
+  laptop battery — a lucky directory name was hiding a real gap); adding the `scope` check and a
+  fixture where the mouse sorts first made both probes fail properly. When a mutation survives,
+  suspect the fixture before the code.
+- **Mutation probes found two silent guards.** "Deliver once" passed with the guard removed
+  because the ledger already refused a second delivery — fine — but "failed delivery not
+  retried" had no test at all until the probe said so. Thirteen probes, thirteen failures, two
+  of them only after adding the test they demanded.
+- **Argparse and a bare sub-command.** The timer runs `jarvis brief --quiet`; `--quiet` lived on
+  `brief run` only and the bare form was accepted through `brief_command=None` — the new flags
+  had to be on *both* parsers, with `argparse.SUPPRESS` defaults on the sub-parser so a flag given
+  before `run` is not overwritten. Otherwise the shipped unit would have parsed `--signals` as an
+  unknown argument on the next run.
+- **Verified:** ruff/format/mypy clean; non-live gate 1039 passed / 11 deselected; 13 mutation
+  probes; golden `off`-mode byte-identity against the v1.22.0 output; every new verb run for
+  real; `systemd-analyze security/verify` on the generated units. **Not verified:** any live bus
+  session, battery, suspend or lock cycle — the sandbox cannot install a bus daemon (apt mirrors
+  unreachable). The listener stays opt-in until the owner sees one held briefing delivered on
+  unlock.
+

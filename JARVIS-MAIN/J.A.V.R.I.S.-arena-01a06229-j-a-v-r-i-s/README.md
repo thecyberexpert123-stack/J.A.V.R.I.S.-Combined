@@ -6,7 +6,7 @@
 >
 > *(Repository keeps its original name `J.A.V.R.I.S.`; the canonical project name is JARVIS per owner ruling, 2026-09-02.)*
 
-**Status: `v1.22.0` — M0–M11 complete + the 2026 deep-research roadmap fully landed
+**Status: `v1.23.0` — M0–M11 complete + the 2026 deep-research roadmap fully landed
 (voice ADR-0019 · memory ADR-0020 · briefings ADR-0021 · guarded desktop awareness ADR-0022 ·
 intent retrain ADR-0023 · synthesis digest ADR-0024) + the hybrid AI upgrade (ADR-0025) + the
 unknown-app answer (ADR-0026)**: deterministic engine + a dual-path (local/API) LLM planner
@@ -27,7 +27,7 @@ Plan accepted 2026-09-02; open decisions recorded in [`docs/PLAN.md` §13](docs/
 | Research & evidence | [`docs/RESEARCH.md`](docs/RESEARCH.md) |
 | 2026 deep research & roadmap | [`docs/RESEARCH-jarvis-agent-linux-2026.md`](docs/RESEARCH-jarvis-agent-linux-2026.md) |
 | 2026 deep research II — agent construction & future tech | [`docs/RESEARCH-agent-construction-and-future-tech-2026.md`](docs/RESEARCH-agent-construction-and-future-tech-2026.md) |
-| Follow-through sequence for research II (owner-gated; C6 `pass^k` = ADR-0027, C11 journal evidence chain = ADR-0028, C3 doorway watchdog = ADR-0029, C1 argument policy = ADR-0030, C4 environment signals = ADR-0031 proposed) | [`../../TASKS.md`](../../TASKS.md) · [`docs/adr/0027-passk-eval-reliability.md`](docs/adr/0027-passk-eval-reliability.md) · [`docs/adr/0028-journal-evidence-chain.md`](docs/adr/0028-journal-evidence-chain.md) · [`docs/adr/0029-doorway-watchdog-and-unit-hardening.md`](docs/adr/0029-doorway-watchdog-and-unit-hardening.md) · [`docs/adr/0030-owner-argument-policy.md`](docs/adr/0030-owner-argument-policy.md) · [`docs/adr/0031-environment-signals-briefing-inputs.md`](docs/adr/0031-environment-signals-briefing-inputs.md) |
+| Follow-through sequence for research II (owner-gated; C6 `pass^k` = ADR-0027, C11 journal evidence chain = ADR-0028, C3 doorway watchdog = ADR-0029, C1 argument policy = ADR-0030, C4 environment signals + opt-in listener = ADR-0031 hybrid, implemented) | [`../../TASKS.md`](../../TASKS.md) · [`docs/adr/0027-passk-eval-reliability.md`](docs/adr/0027-passk-eval-reliability.md) · [`docs/adr/0028-journal-evidence-chain.md`](docs/adr/0028-journal-evidence-chain.md) · [`docs/adr/0029-doorway-watchdog-and-unit-hardening.md`](docs/adr/0029-doorway-watchdog-and-unit-hardening.md) · [`docs/adr/0030-owner-argument-policy.md`](docs/adr/0030-owner-argument-policy.md) · [`docs/adr/0031-environment-signals-briefing-inputs.md`](docs/adr/0031-environment-signals-briefing-inputs.md) |
 | Change log | [`CHANGELOG.md`](CHANGELOG.md) |
 | Development experience log | [`AGENT-EXPERIENCE.md`](AGENT-EXPERIENCE.md) |
 
@@ -196,11 +196,12 @@ the state dir. Agent-initiated capture is parked (ADR-0020 D2).
 Level-2 proactivity, propose-only — the agent may knock, never act on its own:
 
 ```bash
-jarvis brief                  # compose + decide + deliver (prints "nothing to report" or the briefing)
-jarvis brief status           # runs, notified, silenced, silence rate, feedback counts
+jarvis brief [--signals off|sysfs|bus] [--battery-low PCT]   # sense + compose + decide + deliver
+jarvis brief status           # runs, notified, silenced, held, events, late deliveries, feedback
 jarvis brief accept|dismiss <id>   # feedback recorded (policy learning parked)
-jarvis brief install [--on daily|weekly] [--harden]   # opt-in systemd --user timer; --harden = confined unit (ADR-0029)
-jarvis brief uninstall
+jarvis brief install [--on daily|weekly] [--harden] [--signals …] [--battery-low PCT] [--listen [--record-only]]
+jarvis brief listen [--once]  # the opt-in signal listener in the foreground (what jarvis-signals.service runs)
+jarvis brief uninstall        # removes the timer and, if present, the listener unit
 ```
 
 Briefings are **computed from local state only** (journal failures, evidence-backed
@@ -208,6 +209,21 @@ suggestions, unmapped requests, disk pressure via `statvfs` — zero subprocesse
 execute commands. The v1 policy is deterministic and inspectable; silence is a first-class,
 ledgered outcome with a reason. `--quiet` (timer mode) delivers via `briefings/latest.md` and
 an optional desktop notification.
+
+**Environment signals (ADR-0031).** Before composing, the briefing senses a few facts and uses
+them only to *add a line* or *withhold the knock* — never to act. `--signals sysfs` (default)
+reads the kernel's own attributes: battery discharging at or below `--battery-low` (20 %; the
+HUD's filter plus the kernel's `scope` marker, so a wireless-mouse cell never counts), no
+network link, and how often the machine slept since the last briefing. `--signals bus` adds
+NetworkManager's *metered* flag and logind's *sleep/shutdown imminent* and *session locked*
+facts over the system bus through a **stdlib, read-only D-Bus client** (no `busctl`, no child
+process, `NO_AUTO_START` on every call — sensing can never start a service). A locked screen
+or an imminent sleep **holds** the desktop notification; `latest.md` and the ledger are still
+written. `--signals off` is the pre-1.23 briefing byte-for-byte. With
+`brief install --listen`, a second, opt-in unit (`jarvis-signals.service`, supervised like the
+doorway, confinable with `--harden`) records sleep/lock/network events in the ledger and
+delivers the day's held briefing once when you unlock or resume — it never composes and never
+executes anything. Everything sensed stays on the machine.
 
 ## Guarded desktop awareness (ADR-0022)
 
@@ -288,6 +304,8 @@ directives on purpose: in a user manager they imply `NoNewPrivileges`/user names
 break the `sudo -n` that T1/T2 steps need — its `systemd-analyze security` score honestly stays
 9.6. The briefing unit never runs a playbook, so `jarvis brief install --harden` gives *it* the
 full confinement profile (9.6 → 2.0 offline); opt-in until one verified run on real hardware.
+The optional signal listener (ADR-0031) takes the same supervision (`Type=notify`,
+`WatchdogSec=60`) and, under `--harden`, the same profile — its only sockets are AF_UNIX.
 
 ## MCP surface (ADR-0013 M9a)
 
@@ -409,7 +427,7 @@ M0–M11 complete through v1.11.0; then the 2026 deep research (45 sources) prod
 charter-compliant roadmap whose items are now all landed — voice (v1.13.0), file memory
 (v1.14.0), scheduled briefings (v1.15.0), guarded desktop awareness (v1.16.0), full-vocabulary
 intent retrain (v1.17.0), synthesis digest (v1.18.0), the hybrid AI upgrade (v1.19.0), and
-the unknown-app answer with owner-taught app packs (v1.20.0); the journal evidence chain (v1.21.0, ADR-0028); supervised doorway + owner argument policy (v1.22.0, ADR-0029/0030). Milestone history and
+the unknown-app answer with owner-taught app packs (v1.20.0); the journal evidence chain (v1.21.0, ADR-0028); supervised doorway + owner argument policy (v1.22.0, ADR-0029/0030); environment signals + the opt-in signal listener (v1.23.0, ADR-0031). Milestone history and
 acceptance criteria: [`docs/PLAN.md` §7](docs/PLAN.md). Review candidates `v1.0.0-rc1` …
 `v1.20.0-rc1` (24 drafts) await the owner's publishing decisions; nothing is merged and
 `main` is untouched — the owner merge policy is absolute.

@@ -66,12 +66,18 @@ repository is not versioned independently; the sub-projects are.
   artefacts carry `origins`, legacy ones skip), ship-empty. 40 new tests, kernel suite
   941 passed, M3 fault gate 0 escapes under no / permissive / deny-all policy. GUI
   untouched; `jarvis_status` gains one additive key the HUD may ignore.
-- **Sequence item C4 — ADR-0031 drafted, paused** (2026-09-06, kernel docs only): environment
-  signals as inputs to the propose-only briefing — battery / link / slept from the kernel's sysfs
-  ABI (zero-subprocess), metered / sleep-or-shutdown-imminent / locked from logind and
-  NetworkManager via fixed-argv `busctl … --auto-start=no --timeout=2`; items add text, holds drop
-  the desktop knock, nothing triggers execution; default `--signals off` = today. Owner questions
-  Q-A…Q-D (signal set, default mode, no listener, hold semantics) before any code.
+- **Sequence item C4 — ADR-0031 drafted, paused, then accepted as a hybrid and implemented**
+  (2026-09-06, kernel **1.23.0**): environment signals as inputs to the propose-only briefing —
+  battery / link / slept from the kernel's sysfs ABI, metered / sleep-or-shutdown-imminent /
+  locked from logind and NetworkManager through a **stdlib, read-only D-Bus wire client** (owner
+  rejected `busctl` children: zero subprocesses in every mode); items add text, holds withhold the
+  desktop knock, nothing triggers execution; default `--signals sysfs`, `off` = the previous
+  briefing byte-for-byte. Plus the owner's hybrid addition: an **opt-in resident listener** in
+  its own supervised unit (`jarvis brief listen` / `jarvis-signals.service`) that records
+  sleep/lock/network events and delivers the day's held briefing once on unlock/resume — never
+  composes, never executes. 95 new tests, kernel suite 1039 passed; codec verified against an
+  independent implementation. GUI untouched (one recommendation recorded: port the kernel's
+  `scope=Device` battery filter to the HUD).
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the

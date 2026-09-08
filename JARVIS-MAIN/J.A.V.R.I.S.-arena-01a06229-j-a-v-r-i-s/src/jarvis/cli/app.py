@@ -1618,8 +1618,40 @@ def _cmd_memory(args: argparse.Namespace) -> int:
         return 2
 
 
+def _brief_run_flags(parser: argparse.ArgumentParser, *, suppress: bool) -> None:
+    """``--quiet`` / ``--signals`` / ``--battery-low`` for ``brief`` and ``brief run``.
+
+    With ``suppress`` the sub-parser sets no defaults of its own, so a flag
+    given before ``run`` (on ``brief``) is not overwritten by the sub-parser.
+    """
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        default=argparse.SUPPRESS if suppress else False,
+        help="print only when notifying (timer mode)",
+    )
+    parser.add_argument(
+        "--signals",
+        choices=("off", "sysfs", "bus"),
+        default=argparse.SUPPRESS if suppress else "sysfs",
+        help="environment signals to sense before composing (ADR-0031): off = today's "
+        "briefing byte-for-byte; sysfs (default) = battery / link / suspend count from /sys; "
+        "bus = sysfs + metered / locked / sleep-imminent from the system bus (stdlib client, "
+        "read-only, never activates a service)",
+    )
+    parser.add_argument(
+        "--battery-low",
+        type=int,
+        default=argparse.SUPPRESS if suppress else 20,
+        metavar="PCT",
+        help="battery percentage at or below which a discharging battery becomes a line "
+        "(default 20)",
+    )
+
+
 def _cmd_brief(args: argparse.Namespace) -> int:
-    """Scheduled briefings (ADR-0021): run / status / accept / dismiss / install / uninstall."""
+    """Scheduled briefings (ADR-0021): run / status / accept / dismiss / install / uninstall /
+    listen (ADR-0031)."""
     import json as _json
 
     from jarvis.brief.engine import BriefLedger, run_once
@@ -1632,12 +1664,17 @@ def _cmd_brief(args: argparse.Namespace) -> int:
             payload = run_once(
                 quiet=bool(getattr(args, "quiet", False)),
                 json_output=bool(getattr(args, "json", False)),
+                signals_mode=str(getattr(args, "signals", "sysfs")),
+                battery_low=int(getattr(args, "battery_low", 20)),
             )
             if args.json:
                 print(_json.dumps(payload, indent=2))
             return 0
         if action == "status":
-            print(_json.dumps(ledger.stats(), indent=2))
+            stats = ledger.stats()
+            held = ledger.held_undelivered()
+            stats["held_undelivered"] = None if held is None else held.get("id")
+            print(_json.dumps(stats, indent=2))
             return 0
         if action in ("accept", "dismiss"):
             ledger.record_feedback(args.briefing_id, action)
@@ -1646,11 +1683,26 @@ def _cmd_brief(args: argparse.Namespace) -> int:
         if action == "install":
             from jarvis.brief.install import install_timer
 
-            return install_timer(args.on, Path.home(), harden=bool(getattr(args, "harden", False)))
+            return install_timer(
+                args.on,
+                Path.home(),
+                harden=bool(getattr(args, "harden", False)),
+                signals=str(getattr(args, "signals", "sysfs")),
+                battery_low=int(getattr(args, "battery_low", 20)),
+                listen=bool(getattr(args, "listen", False)),
+                record_only=bool(getattr(args, "record_only", False)),
+            )
         if action == "uninstall":
             from jarvis.brief.install import uninstall_timer
 
             return uninstall_timer(Path.home())
+        if action == "listen":
+            from jarvis.brief.listen import run_listener
+
+            return run_listener(
+                record_only=bool(getattr(args, "record_only", False)),
+                once=bool(getattr(args, "once", False)),
+            )
     except SafetyRefusal as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
@@ -2168,8 +2220,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_brief_sub = p_brief.add_subparsers(dest="brief_command")
     p_brief.set_defaults(func=_cmd_brief, brief_command=None)  # bare = run
+    # Run flags live on `brief` itself (the timer's ExecStart is `jarvis brief --quiet`) and
+    # are repeated on `brief run` without defaults so either spelling works.
+    _brief_run_flags(p_brief, suppress=False)
     p_brief_run = p_brief_sub.add_parser("run", help="compose + decide + deliver + ledger")
-    p_brief_run.add_argument("--quiet", action="store_true", help="print only when notifying")
+    _brief_run_flags(p_brief_run, suppress=True)
     p_brief_run.set_defaults(func=_cmd_brief, brief_command="run")
     p_brief_sub.add_parser("status", help="runs, silence rate, feedback counts").set_defaults(
         func=_cmd_brief, brief_command="status"
@@ -2190,10 +2245,56 @@ def build_parser() -> argparse.ArgumentParser:
         help="opt-in systemd confinement profile for the briefing unit (ADR-0029 D3; "
         "the brief never runs a playbook, so it can be sandboxed)",
     )
+    p_brief_ins.add_argument(
+        "--signals",
+        choices=("off", "sysfs", "bus"),
+        default="sysfs",
+        help="environment signals the scheduled briefing senses (ADR-0031): off = none, "
+        "sysfs = battery / link / suspend count from /sys (default), bus = sysfs + metered / "
+        "locked / sleep-imminent over the system bus (stdlib client, read-only)",
+    )
+    p_brief_ins.add_argument(
+        "--battery-low",
+        type=int,
+        default=20,
+        metavar="PCT",
+        help="battery percentage at or below which a discharging battery becomes a briefing "
+        "line (default 20)",
+    )
+    p_brief_ins.add_argument(
+        "--listen",
+        action="store_true",
+        help="also install jarvis-signals.service: a resident listener that records sleep / "
+        "lock / network events and re-delivers a held briefing when you unlock or resume "
+        "(ADR-0031 D8; never composes, never executes)",
+    )
+    p_brief_ins.add_argument(
+        "--record-only",
+        action="store_true",
+        help="with --listen: record events only, never deliver a held briefing",
+    )
     p_brief_ins.set_defaults(func=_cmd_brief, brief_command="install")
     p_brief_sub.add_parser("uninstall", help="remove the timer; back to on-demand").set_defaults(
         func=_cmd_brief, brief_command="uninstall"
     )
+    p_brief_listen = p_brief_sub.add_parser(
+        "listen",
+        help="run the signal listener in the foreground (what jarvis-signals.service runs)",
+        description=(
+            "Subscribes to logind PrepareForSleep / PrepareForShutdown, the session's "
+            "LockedHint and NetworkManager Metered / Connectivity changes over the system bus "
+            "(stdlib D-Bus client, read-only). Powers: record events to the briefing ledger; "
+            "deliver today's held briefing once when the hold clears. It never composes a "
+            "briefing and never executes anything (ADR-0031 D8)."
+        ),
+    )
+    p_brief_listen.add_argument(
+        "--record-only", action="store_true", help="record events; never deliver"
+    )
+    p_brief_listen.add_argument(
+        "--once", action="store_true", help="one subscribe/poll pass, then exit (diagnostics)"
+    )
+    p_brief_listen.set_defaults(func=_cmd_brief, brief_command="listen")
 
     p_desktop = sub.add_parser(
         "desktop",
