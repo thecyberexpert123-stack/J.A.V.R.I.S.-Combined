@@ -31,7 +31,21 @@ below each entry were corrected in place.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Accepted, not yet implemented (docs only — owner decisions D14, 2026-09-08)
+- **ADR-0032 — self-authored skills** (`docs/adr/0032-self-authored-skills.md`, 2026-09-08):
+  a `jarvis grow forge` loop in which the model authors **data** (an M9b `*.skill.json`; optionally,
+  per a later ADR-0033, a `ReadOnlySpec`-shaped JSON) and the **kernel** owns every test — schema,
+  real dry-run of the evals, must-not-match negatives (catalog hints, destructive corpus, shell
+  metacharacter tails), no capture groups / no shadowing, a forked ReDoS budget, a T0 ceiling,
+  kernel-computed provenance — with ≤ 3 repair attempts, a transcript, and output written only to
+  the `proposals/` quarantine; promotion stays `jarvis --yes skill install`. Design grounded in
+  `nazirlouis/Ada-SI` (studied as reference and counter-example), EvoMal (arXiv 2608.25776),
+  Veracode's 2026 GenAI code report and the Landlock userspace API. **No code changes in this
+  entry**; three throw-away spikes (JSON spec → `make_readonly`; `ctypes` Landlock read-only
+  domain on ABI 2; ReDoS acceptance by `validate_skill`) informed it and are not committed.
+  Owner decisions the same day: implement **after C2**; Tier B as follow-up ADR-0033 once Tier A
+  ships; ceiling T0 by default with T1 behind `--tier 1`, 3 repair attempts; AI authoring with a
+  deterministic template fallback.
 
 ## [1.23.0] - 2026-09-06 — environment signals as briefing inputs + opt-in signal listener (ADR-0031, hybrid)
 

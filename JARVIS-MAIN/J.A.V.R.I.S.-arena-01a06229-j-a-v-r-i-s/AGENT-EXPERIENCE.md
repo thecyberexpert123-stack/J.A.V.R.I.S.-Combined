@@ -577,3 +577,41 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   unreachable). The listener stays opt-in until the owner sees one held briefing delivered on
   unlock.
 
+
+---
+
+## 2026-09-08 · C12 self-authored skills — the forge that must not write code (ADR-0032, design only)
+
+- **The request read like a redesign; the codebase said otherwise.** "Create its own skills via
+  programming, through multiple tests" sounds like Ada-SI: LLM writes Python, LLM writes tests, a
+  venv runs them, retry three times, install. Reading Ada-SI file by file was worth it precisely
+  because it is a clean, well-built version of the thing the evidence says not to build — the
+  model grades its own work, `augment_requirements_for_missing_module` grows the dependency list
+  from error strings, and the README itself says the venv is not a sandbox. JARVIS already had
+  the safe half (M9b packs + M8d proposals); what was missing was only the authoring loop.
+- **Numbers, not taste, decided the shape.** EvoMal's self-poisoning rates (20–42 % of tasks
+  authoring a copied malicious skill; libraries 5–9× the planted count; copies invisible to
+  signature checks) and the Veracode 56 % pass rate turned "data-only, kernel-tested, quarantine
+  first" from a preference into the only defensible option. The paper's remedy — a curator-signed
+  retrievable level and an unretrievable quarantine for agent-authored entries — is the exact
+  shape `skills/` + receipts vs `proposals/` already has. Good to learn we were on the right side
+  of a result published two weeks ago.
+- **Spikes before prose.** Three throw-away runs kept the ADR honest: a JSON spec really does
+  compile through `make_readonly` untouched and shadows none of the 57 catalog hints; a `ctypes`
+  Landlock domain on this 6.1 kernel (ABI 2) really does let `du` run while `rm` and `>` get
+  `EACCES`; and — the surprise — today's `validate_skill` happily accepts `(a+)+`. A forged regex
+  sits on the hot path of every unmatched request, so the ReDoS budget became test T5 and a
+  recommendation (F4) for hand-written packs too.
+- **A layering error caught by grep.** The first draft promised to reuse the M3 fault vectors as
+  negatives; they live inside `tests/test_fault_injection.py` functions, and `src/` cannot import
+  `tests/`. Rewritten to a kernel-owned corpus plus a test asserting it is a superset.
+- **Discipline held:** security-sensitive → ADR → commit docs → pause. No `src/` change, no
+  dependency, no version bump; the spikes are not in the tree. **Not verified:** any live model
+  writing a pack — no Ollama here — so the owner's first `grow forge` run is the acceptance test.
+- **Owner decisions arrived within the hour (D14):** after C2; Tier B as ADR-0033 later; T0
+  default with T1 behind `--tier 1`; 3 attempts; AI with template fallback. The ADR moved to
+  Accepted with the answers written beside each question. One operational note for the record: the
+  design commit (`b9adf17`) could not be pushed because the sandbox's GitHub token had expired, and
+  a sandbox reset then dropped the unpushed commit — the working tree survived, so the same change
+  set is re-committed here with the D14 answers folded in. Same lesson as C4: a commit is not safe
+  until the push is confirmed.

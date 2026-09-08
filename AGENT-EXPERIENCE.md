@@ -126,3 +126,15 @@ from the policy arrive through the same `status: refused` + `error` shape as
 every other refusal, so the HUD's existing refusal rendering shows the rule id
 and the owner's reason verbatim.
 
+
+## 2026-09-08 · C12 — owner-added item, design phase
+
+The owner extended the sequence with a self-authoring-skills feature and a
+reference repository (Ada-SI). Kernel-only again (ADR-0032; nothing in `src/`),
+but one HUD note for later: if Tier A ships, `jarvis grow forge` proposals
+appear only under `proposals/skills/` until the owner installs them, so the
+HUD's skill/status panel needs no change — installed packs still surface
+through `jarvis skill list` exactly as today. A future "pending proposals"
+badge would read the proposals directory, never the forge transcript, which
+carries the raw request text (potential prompt-injection payload) and should
+be shown, if at all, escaped and read-only.

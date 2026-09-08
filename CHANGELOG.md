@@ -78,6 +78,20 @@ repository is not versioned independently; the sub-projects are.
   composes, never executes. 95 new tests, kernel suite 1039 passed; codec verified against an
   independent implementation. GUI untouched (one recommendation recorded: port the kernel's
   `scope=Device` battery filter to the HUD).
+- **Sequence item C12 — self-authored skills, ADR-0032 drafted, paused, then accepted** (2026-09-08,
+  docs only, no version tag): the owner asked for JARVIS to *create its own skills through
+  multiple tests* and pointed at `nazirlouis/Ada-SI`. Deep research (Ada-SI file by file; EvoMal
+  skill-library self-poisoning, EvoSkill/SARGE, SkillJack; LATM/ToolMaker lineage; Agent Skills +
+  Snyk audit; Veracode 2026 GenAI code report; Landlock docs) and three sandbox spikes led to a
+  proposal that keeps the owner's loop — propose → kernel tests → repair ≤ 3 → propose again →
+  owner installs — but confines the model to **data**: M9b vocabulary packs (Tier A) and, as an
+  owner option for a follow-up ADR, read-only command specs probed under a Landlock read-only
+  domain (Tier B). Python/`SKILL.md` skills, model-written tests as the oracle, and any
+  dependency growth are rejected on the evidence. `TASKS.md` gains the B-C12 block, decision row
+  D14 (pending), recommendations F4 (ReDoS gate for hand-written packs — today's validator
+  accepts `(a+)+`) and F5 (MCP forge tool is out of scope). Owner decisions D14 the same day:
+  implement after C2; Tier B as follow-up ADR-0033; T0 default / T1 behind `--tier 1`, 3 attempts;
+  AI with template fallback. No kernel or GUI code changed.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the
