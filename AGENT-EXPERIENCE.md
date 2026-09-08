@@ -138,3 +138,10 @@ through `jarvis skill list` exactly as today. A future "pending proposals"
 badge would read the proposals directory, never the forge transcript, which
 carries the raw request text (potential prompt-injection payload) and should
 be shown, if at all, escaped and read-only.
+
+## 2026-09-08 · C2 — design phase, measured first
+
+Kernel-only (ADR-0033; nothing in `src/`). HUD note: if accepted, `jarvis status --json` and the
+MCP `jarvis_status` payload gain an additive `stale_tasks` list; the HUD may render it as a
+badge ("1 interrupted task — open a terminal to decide") but must not offer a resume button
+itself — the consent for `resume` is a shell-side act in the proposal, exactly like `--yes`.

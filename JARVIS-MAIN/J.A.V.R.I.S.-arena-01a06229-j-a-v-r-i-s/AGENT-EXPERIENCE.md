@@ -615,3 +615,29 @@ Tagged every CI-green milestone commit (`v1.3.0-rc1` … `v1.8.0-rc1`, annotated
   a sandbox reset then dropped the unpushed commit — the working tree survived, so the same change
   set is re-committed here with the D14 answers folded in. Same lesson as C4: a commit is not safe
   until the push is confirmed.
+
+---
+
+## 2026-09-08 · C2 resumable task log — measure first, and the measurement rewrote the problem (ADR-0033, design only)
+
+- **The task list said "measure first", and it paid for itself.** I expected to size a
+  resume feature. Three probe scripts against the shipped kernel found something more basic: after
+  a hard crash the journal says `running` forever **and there is no undo artifact**, because
+  `store_undo` runs after `_execute` — the opposite of what the research doc (and my own memory of
+  the code) claimed. A second probe closed the terminal: JARVIS dies of SIGHUP, the `setsid` child
+  finishes `apt-get` unobserved, and the journal has zero step rows because rows are written after
+  `communicate()` returns. A third put Ctrl-C *between* steps: `failed`/1, not `interrupted`/130.
+  The feature the research imagined — replay — is the one the kernel must not have (ADR-0017 D3);
+  the feature the code needs is a *truthful record* with undo that survives the crash, and an
+  offer, not an action.
+- **Durable-execution literature agrees with the charter.** Every engine (Temporal, DBOS,
+  JobRunr) makes progress durable and then insists side effects be idempotent because steps run
+  at least once on replay. JARVIS cannot prove idempotency for `tee -a` or `mv`, so "resume" is
+  limited to playbooks a human flagged, and asked for each time. `svc.restart` nearly slipped
+  into the idempotent list until I wrote the justification: a second restart is a second outage.
+- **Recorded, not fixed:** the wrong sentence in the research doc (F6) and the SIGHUP behaviour
+  (F7) — both belong with C2's implementation commit or an owner decision, not a drive-by edit.
+- **Verified:** the three findings are from real runs (fork + `os._exit`, real `LocalRunner` with
+  SIGHUP, in-process SIGINT) — the scripts are described in the ADR and not committed. **Not
+  verified:** frequency in the owner's real journal (the sandbox has none) and the live
+  `kill -9` mid-`apt-get` case, which only the owner's machine can run.

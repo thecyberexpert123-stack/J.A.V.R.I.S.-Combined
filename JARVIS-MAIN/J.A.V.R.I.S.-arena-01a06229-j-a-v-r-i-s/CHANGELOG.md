@@ -47,6 +47,18 @@ below each entry were corrected in place.
   ships; ceiling T0 by default with T1 behind `--tier 1`, 3 repair attempts; AI authoring with a
   deterministic template fallback.
 
+### Proposed (docs only — paused for owner decision D15)
+- **ADR-0033 — resumable task log** (`docs/adr/0033-resumable-task-log.md`, 2026-09-08; sequence
+  item C2). Measured first: a hard crash mid-plan leaves the task `running` forever with **no undo
+  artifact** (`store_undo` runs after `_execute`); a closed terminal kills JARVIS while the `setsid`
+  child finishes unobserved and the journal records no step; a kill-switch signal *between* steps
+  ends as `failed`/1 instead of `interrupted`/130. Proposed: `started` step rows before the child
+  runs, the undo artifact stored **before** the first step and confirmed after, stale `running`
+  tasks closed as `interrupted` only when pid + starttime + boot id prove the process is gone, a
+  wake-up **report** (undo / resume / dismiss — never an action) on the next `do`/`ask`/`undo`/
+  `tasks`, and `jarvis resume <id>` restricted to playbooks flagged `idempotent`, consent asked
+  again. No automatic resume anywhere. **No code changes in this entry.**
+
 ## [1.23.0] - 2026-09-06 — environment signals as briefing inputs + opt-in signal listener (ADR-0031, hybrid)
 
 Owner-accepted hybrid of the 2026-09-06 proposal (decision D13 in the combined-repo `TASKS.md`):

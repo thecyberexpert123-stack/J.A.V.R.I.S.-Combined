@@ -92,6 +92,14 @@ repository is not versioned independently; the sub-projects are.
   accepts `(a+)+`) and F5 (MCP forge tool is out of scope). Owner decisions D14 the same day:
   implement after C2; Tier B as follow-up ADR-0033; T0 default / T1 behind `--tier 1`, 3 attempts;
   AI with template fallback. No kernel or GUI code changed.
+- **Sequence item C2 — resumable task log, ADR-0033 drafted and paused** (2026-09-08, docs only):
+  measured before designing — three real-run findings (crash → `running` forever and no undo
+  artifact; terminal close → child finishes unobserved, no step row; signal between steps →
+  `failed` not `interrupted`). Proposal: truthful step/undo records written *before* execution,
+  stale tasks closed honestly, a report-only wake-up with undo / resume / dismiss, and an
+  idempotent-only `jarvis resume` that asks consent again. `TASKS.md`: B-C2 block, D15 pending,
+  F6 (research-doc sentence about undo timing is wrong for the shipped code) and F7 (SIGHUP
+  behaviour worth a README line). No kernel or GUI code changed.
 
 ### Fixed
 - **File modes lost in the import.** Seven scripts that are `100755` in the
